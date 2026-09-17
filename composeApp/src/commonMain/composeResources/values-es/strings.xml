@@ -413,6 +413,7 @@
     <string name="compose_nav_library">Biblioteca</string>
     <string name="compose_nav_profile">Perfil</string>
     <string name="compose_nav_search">Buscar</string>
+    <string name="compose_nav_settings">Configuración</string>
     <string name="compose_player_audio_tracks">Pistas de audio</string>
     <string name="compose_player_audio">Audio</string>
     <string name="compose_player_auto_sync">Sincronización automática</string>
@@ -1177,11 +1178,8 @@
     <string name="settings_playback_timeout_unlimited">Ilimitado</string>
     <string name="settings_playback_tunneled_playback">Reproducción tunneled</string>
     <string name="settings_playback_tunneled_playback_description">Activa la reproducción tunneled para una menor latencia en la sincronización de audio/video.</string>
-    <string name="settings_tmdb_add_api_key_first">Añade tu propia clave API de TMDB abajo antes de activar el enriquecimiento.</string>
-    <string name="settings_tmdb_api_key_label">Clave API de TMDB</string>
     <string name="settings_tmdb_enable_enrichment">Activar enriquecimiento TMDB</string>
-    <string name="settings_tmdb_enable_enrichment_description">Usar tu clave API de TMDB para enriquecer metadatos del complemento en la pantalla de detalles cuando haya un ID de TMDB o IMDb disponible.</string>
-    <string name="settings_tmdb_enter_api_key">Introduce tu clave API v3 de TMDB.</string>
+    <string name="settings_tmdb_enable_enrichment_description">Usa TMDB como fuente de metadatos para mejorar datos de complemento</string>
     <string name="settings_tmdb_language_code_label">Código de idioma</string>
     <string name="settings_tmdb_module_artwork">Arte</string>
     <string name="settings_tmdb_module_artwork_description">Reemplazar fondo, póster y logo con arte de TMDB.</string>
@@ -1207,10 +1205,8 @@
     <string name="settings_tmdb_module_season_posters_description">Usar pósters de temporada de TMDB en el selector de temporadas de la pantalla de metadatos para series.</string>
     <string name="settings_tmdb_module_trailers">Tráilers</string>
     <string name="settings_tmdb_module_trailers_description">Obtener y mostrar la sección de vídeos de tráiler de TMDB en páginas de detalles.</string>
-    <string name="settings_tmdb_personal_api_key">Clave API personal</string>
     <string name="settings_tmdb_preferred_language">Idioma preferido</string>
     <string name="settings_tmdb_preferred_language_description">Configura el código de idioma de TMDB usado para metadatos localizados, por ejemplo `en`, `en-US` o `pt-BR`.</string>
-    <string name="settings_tmdb_section_credentials">CREDENCIALES</string>
     <string name="settings_tmdb_section_localization">LOCALIZACIÓN</string>
     <string name="settings_tmdb_section_modules">MÓDULOS</string>
     <string name="settings_tmdb_section_title">TMDB</string>
@@ -1699,7 +1695,6 @@
     <string name="trakt_error_add_list_failed">No se pudo agregar a la lista Trakt</string>
     <string name="trakt_error_missing_ids">Faltan ID de Trakt compatibles</string>
     <string name="trakt_error_empty_response">Cuerpo de respuesta vacío</string>
-    <string name="tmdb_sources_api_key_required">Agregue una clave API de TMDB en Configuración para usar fuentes de TMDB.</string>
     <string name="tmdb_sources_collection_fallback_title">Colección TMDB %1$d</string>
     <string name="tmdb_sources_collection_not_found">Colección TMDB no encontrada</string>
     <string name="tmdb_sources_company_fallback_title">Producción de TMDB %1$d</string>
@@ -2032,7 +2027,6 @@
     <string name="collections_editor_tmdb_production_title_format">Producción de TMDB %1$s</string>
     <string name="collections_editor_tmdb_source_load_failed">No se pudo cargar la fuente TMDB</string>
     <string name="collections_editor_trakt_list_id_format">ID %1$s</string>
-    <string name="collections_tmdb_api_key_required">Agregue una clave API de TMDB en Configuración para usar fuentes de TMDB.</string>
     <string name="collections_tmdb_collection_not_found">Colección TMDB no encontrada</string>
     <string name="collections_tmdb_company_not_found">Empresa TMDB no encontrada</string>
     <string name="collections_tmdb_discover_no_data">TMDB Discover no devolvió datos</string>
@@ -2075,8 +2069,6 @@
     <string name="plugins_badge_providers">%1$d proveedores</string>
     <string name="plugins_badge_refreshing">Refrescante</string>
     <string name="plugins_badge_repos">%1$d repositorios</string>
-    <string name="plugins_badge_tmdb_key_missing">Falta la clave API de TMDB</string>
-    <string name="plugins_badge_tmdb_key_set">Conjunto de claves API de TMDB</string>
     <string name="plugins_button_install_repo">Instalar repositorio de complementos</string>
     <string name="plugins_button_installing">Instalando…</string>
     <string name="plugins_button_test_provider">Proveedor de pruebas</string>
@@ -2120,7 +2112,6 @@
     <string name="plugins_test_error_title">Error</string>
     <string name="plugins_test_failed">La prueba del proveedor falló</string>
     <string name="plugins_test_results_count">Resultados de la prueba (%1$d)</string>
-    <string name="plugins_tmdb_required_message">Los proveedores de complementos requieren una clave API de TMDB. Configúrelo en la pantalla TMDB o los proveedores de complementos no funcionarán correctamente.</string>
     <string name="search_error_no_results_for_catalog">No se obtuvieron resultados de búsqueda para %1$s.</string>
     <string name="settings_playback_introdb_invalid_key">Clave API no válida o error de conexión</string>
     <string name="streams_plugin_repository_fallback">Repositorio de complementos</string>

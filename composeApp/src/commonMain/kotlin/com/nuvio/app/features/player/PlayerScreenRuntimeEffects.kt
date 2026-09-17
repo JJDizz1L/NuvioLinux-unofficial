@@ -107,6 +107,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         episodeStreamsPanelState = EpisodeStreamsPanelState()
         PlayerStreamsRepository.clearEpisodeStreams()
         SubtitleRepository.clear()
+        autoFetchedAddonSubtitlesForKey = null
         WatchProgressRepository.ensureLoaded()
     }
 
@@ -251,9 +252,8 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     LaunchedEffect(
         activeSourceUrl,
         addonSubtitleFetchKey,
-        playerController,
-        playerControllerSourceUrl,
     ) {
+        if (activeSourceUrl.startsWith("file:") && externalSubtitles.isNotEmpty()) return@LaunchedEffect
         val fetchKey = addonSubtitleFetchKey ?: return@LaunchedEffect
         if (autoFetchedAddonSubtitlesForKey == fetchKey) return@LaunchedEffect
         autoFetchedAddonSubtitlesForKey = fetchKey
@@ -352,6 +352,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     }
 
     DisposableEffect(Unit) {
+        PlayerStreamsRepository.pauseSearchForPlayback()
         onDispose {
             playerController?.clearNowPlayingInfo()
             P2pStreamingEngine.shutdown()
@@ -391,9 +392,15 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         lockedOverlayVisible = false
     }
 
-    LaunchedEffect(playbackSnapshot.isPlaying, playbackSnapshot.isLoading, playbackSnapshot.durationMs, errorMessage) {
+    LaunchedEffect(
+        playerSettingsUiState.pauseOverlayEnabled,
+        playbackSnapshot.isPlaying,
+        playbackSnapshot.isLoading,
+        playbackSnapshot.durationMs,
+        errorMessage,
+    ) {
         pausedOverlayVisible = false
-        if (playbackSnapshot.isPlaying || playbackSnapshot.isLoading || playbackSnapshot.durationMs <= 0L || errorMessage != null) {
+        if (!playerSettingsUiState.pauseOverlayEnabled || playbackSnapshot.isPlaying || playbackSnapshot.isLoading || playbackSnapshot.durationMs <= 0L || errorMessage != null) {
             return@LaunchedEffect
         }
         delay(5000)
@@ -489,6 +496,10 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
 
         launch {
             val imdbFromContent = parentMetaId.takeIf { it.startsWith("tt") }
+                ?: (metaUiState.meta ?: playerMeta)
+                    ?.takeIf { it.id == parentMetaId }
+                    ?.imdbId
+                    ?.takeIf { it.startsWith("tt") }
             val intervals = when (lookup) {
                 is SkipIntervalLookup.Imdb -> SkipIntroRepository.getSkipIntervals(
                     imdbId = lookup.imdbId,
@@ -753,67 +764,71 @@ internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message:
     controlsVisible = !playerControlsLocked
 
     credentialRefreshJob = scope.launch {
-        PlayerStreamsRepository.loadSources(
-            type = type,
-            videoId = currentVideoId,
-            season = season,
-            episode = episode,
-            forceRefresh = true,
-        )
-
-        var refreshedStream: StreamItem? = null
-        var pollCount = 0
-        while (pollCount < CREDENTIAL_REFRESH_POLL_COUNT && refreshedStream == null) {
-            val state = PlayerStreamsRepository.sourceState.value
-            refreshedStream = findCredentialRefreshCandidate(
-                streams = state.groups.flatMap { it.streams },
-                failedUrl = failedUrl,
-                expectedProviderAddonId = expectedProviderAddonId,
-                expectedProviderName = expectedProviderName,
-                expectedStreamTitle = expectedStreamTitle,
-                expectedBingeGroup = expectedBingeGroup,
+        try {
+            PlayerStreamsRepository.loadSources(
+                type = type,
+                videoId = currentVideoId,
+                season = season,
+                episode = episode,
+                forceRefresh = true,
             )
-            if (
-                refreshedStream != null ||
-                state.emptyStateReason != null ||
-                (!state.isAnyLoading && state.groups.isNotEmpty())
-            ) {
-                break
+
+            var refreshedStream: StreamItem? = null
+            var pollCount = 0
+            while (pollCount < CREDENTIAL_REFRESH_POLL_COUNT && refreshedStream == null) {
+                val state = PlayerStreamsRepository.sourceState.value
+                refreshedStream = findCredentialRefreshCandidate(
+                    streams = state.groups.flatMap { it.streams },
+                    failedUrl = failedUrl,
+                    expectedProviderAddonId = expectedProviderAddonId,
+                    expectedProviderName = expectedProviderName,
+                    expectedStreamTitle = expectedStreamTitle,
+                    expectedBingeGroup = expectedBingeGroup,
+                )
+                if (
+                    refreshedStream != null ||
+                    state.emptyStateReason != null ||
+                    (!state.isAnyLoading && state.groups.isNotEmpty())
+                ) {
+                    break
+                }
+                delay(CREDENTIAL_REFRESH_POLL_INTERVAL_MS)
+                pollCount++
             }
-            delay(CREDENTIAL_REFRESH_POLL_INTERVAL_MS)
-            pollCount++
-        }
 
-        val stream = refreshedStream
-        if (stream == null) {
-            errorMessage = message
-            controlsVisible = !playerControlsLocked
-            return@launch
-        }
+            val stream = refreshedStream
+            if (stream == null) {
+                errorMessage = message
+                controlsVisible = !playerControlsLocked
+                return@launch
+            }
 
-        val refreshedUrl = stream.playableDirectUrl
-        if (refreshedUrl.isNullOrBlank() || refreshedUrl == failedUrl) {
-            errorMessage = message
-            controlsVisible = !playerControlsLocked
-            return@launch
-        }
+            val refreshedUrl = stream.playableDirectUrl
+            if (refreshedUrl.isNullOrBlank() || refreshedUrl == failedUrl) {
+                errorMessage = message
+                controlsVisible = !playerControlsLocked
+                return@launch
+            }
 
-        flushWatchProgress()
-        stopActiveP2pStream()
-        activeSourceUrl = refreshedUrl
-        activeSourceAudioUrl = null
-        activeSourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
-        activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
-        activeStreamType = stream.streamType
-        activeStreamTitle = stream.streamLabel
-        activeStreamSubtitle = stream.streamSubtitle
-        activeProviderName = stream.addonName
-        activeProviderAddonId = stream.addonId
-        currentStreamBingeGroup = stream.behaviorHints.bingeGroup
-        activeInitialPositionMs = savedPositionMs
-        activeInitialProgressFraction = null
-        showSourcesPanel = false
-        controlsVisible = true
+            flushWatchProgress()
+            stopActiveP2pStream()
+            activeSourceUrl = refreshedUrl
+            activeSourceAudioUrl = null
+            activeSourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
+            activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
+            activeStreamType = stream.streamType
+            activeStreamTitle = stream.streamLabel
+            activeStreamSubtitle = stream.streamSubtitle
+            activeProviderName = stream.addonName
+            activeProviderAddonId = stream.addonId
+            currentStreamBingeGroup = stream.behaviorHints.bingeGroup
+            activeInitialPositionMs = savedPositionMs
+            activeInitialProgressFraction = null
+            showSourcesPanel = false
+            controlsVisible = true
+        } finally {
+            PlayerStreamsRepository.stopSourcesLoading()
+        }
     }
     return true
 }

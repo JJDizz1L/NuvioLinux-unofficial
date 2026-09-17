@@ -57,6 +57,7 @@ import nuvio.composeapp.generated.resources.settings_tracking_source_fallback
 import nuvio.composeapp.generated.resources.settings_tracking_tmdb_recommendations_description
 import nuvio.composeapp.generated.resources.settings_tracking_trakt_library_description
 import nuvio.composeapp.generated.resources.settings_tracking_trakt_progress_description
+import nuvio.composeapp.generated.resources.settings_tracking_trakt_progress_required
 import nuvio.composeapp.generated.resources.settings_tracking_trakt_recommendations_description
 import nuvio.composeapp.generated.resources.settings_tracking_viewing_discovery
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_dialog_subtitle
@@ -65,6 +66,8 @@ import nuvio.composeapp.generated.resources.settings_tracking_anime_id_imdb
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_imdb_description
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_kitsu
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_kitsu_description
+import nuvio.composeapp.generated.resources.settings_tracking_anime_id_tvdb
+import nuvio.composeapp.generated.resources.settings_tracking_anime_id_tvdb_description
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_mal
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_mal_description
 import nuvio.composeapp.generated.resources.settings_tracking_anime_id_subtitle
@@ -292,6 +295,7 @@ private fun TrackingViewingAndDiscovery(
 ) {
     var activePickerName by rememberSaveable { mutableStateOf<String?>(null) }
     val activePicker = activePickerName?.let(TrackingViewingPicker::valueOf)
+    val traktProgressActive = traktConnected && settingsUiState.watchProgressSource == WatchProgressSource.TRAKT
     val effectiveRecommendationsSource = effectiveTrackingRecommendationsSource(
         source = settingsUiState.moreLikeThisSource,
         traktConnected = traktConnected,
@@ -313,8 +317,12 @@ private fun TrackingViewingAndDiscovery(
     SettingsGroup(isTablet = isTablet) {
         TrackingPreferenceActionRow(
             title = stringResource(Res.string.trakt_continue_watching_window),
-            description = stringResource(Res.string.trakt_continue_watching_subtitle),
+            description = stringResource(
+                if (traktProgressActive) Res.string.trakt_continue_watching_subtitle
+                else Res.string.settings_tracking_trakt_progress_required,
+            ),
             value = continueWatchingDaysCapLabel(settingsUiState.continueWatchingDaysCap),
+            enabled = traktProgressActive,
             isTablet = isTablet,
             onClick = { activePickerName = TrackingViewingPicker.CONTINUE_WATCHING.name },
         )
@@ -373,6 +381,7 @@ private fun TrackingPreferenceActionRow(
     onClick: () -> Unit,
     supportingMessage: String? = null,
     isLoading: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val tokens = MaterialTheme.nuvio
     SettingsNavigationRow(
@@ -381,6 +390,7 @@ private fun TrackingPreferenceActionRow(
             description,
             supportingMessage?.takeIf(String::isNotBlank),
         ).joinToString("\n"),
+        enabled = enabled,
         isTablet = isTablet,
         trailingContent = {
             Row(
@@ -624,6 +634,11 @@ private fun animeIdPreferenceOptions(): List<TrackingPickerOption<SimklAnimeIdPr
         title = stringResource(Res.string.settings_tracking_anime_id_kitsu),
         description = stringResource(Res.string.settings_tracking_anime_id_kitsu_description),
     ),
+    TrackingPickerOption(
+        value = SimklAnimeIdPreference.TVDB,
+        title = stringResource(Res.string.settings_tracking_anime_id_tvdb),
+        description = stringResource(Res.string.settings_tracking_anime_id_tvdb_description),
+    ),
 )
 
 @Composable
@@ -631,4 +646,5 @@ private fun animeIdPreferenceLabel(preference: SimklAnimeIdPreference): String =
     SimklAnimeIdPreference.IMDB -> stringResource(Res.string.settings_tracking_anime_id_imdb)
     SimklAnimeIdPreference.MAL -> stringResource(Res.string.settings_tracking_anime_id_mal)
     SimklAnimeIdPreference.KITSU -> stringResource(Res.string.settings_tracking_anime_id_kitsu)
+    SimklAnimeIdPreference.TVDB -> stringResource(Res.string.settings_tracking_anime_id_tvdb)
 }

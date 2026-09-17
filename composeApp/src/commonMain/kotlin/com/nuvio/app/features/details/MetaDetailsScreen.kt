@@ -365,11 +365,11 @@ fun MetaDetailsScreen(
             return@LaunchedEffect
         }
 
-        val imdbId = extractImdbId(metaForRatings.id) ?: extractImdbId(id)
+        val imdbId = extractImdbId(metaForRatings.id) ?: extractImdbId(id) ?: metaForRatings.imdbId
         val tmdbId = extractTmdbId(metaForRatings.id)
             ?: extractTmdbId(id)
-            ?: TmdbService.ensureTmdbId(metaForRatings.id, metaForRatings.type)?.toIntOrNull()
-            ?: TmdbService.ensureTmdbId(id, type)?.toIntOrNull()
+            ?: TmdbService.ensureTmdbId(metaForRatings.id, metaForRatings.type, fallbackImdbId = metaForRatings.imdbId)?.toIntOrNull()
+            ?: TmdbService.ensureTmdbId(id, type, fallbackImdbId = metaForRatings.imdbId)?.toIntOrNull()
 
         if (imdbId == null && tmdbId == null) {
             episodeImdbRatings = emptyMap()
@@ -1061,7 +1061,11 @@ fun MetaDetailsScreen(
                         label = "detail_dominant_backdrop_color",
                     )
 
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .detailsContentReveal(metaScreenSettingsUiState.posterTransitionEnabled),
+                    ) {
                         when (backgroundMode) {
                             MetaScreenBackgroundMode.Normal -> Unit
                             MetaScreenBackgroundMode.Cinematic -> if (deferredMetaWorkAllowed && backdropUrl != null) {
@@ -1266,6 +1270,7 @@ fun MetaDetailsScreen(
                                     onTrailerClick = resolveTrailer,
                                     progressByVideoId = progressByVideoId,
                                     watchedKeys = watchedUiState.watchedKeys,
+                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                                     blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
                                     onEpisodeClick = onEpisodePlayClick,
                                     onEpisodeLongPress = { video ->
@@ -2052,6 +2057,7 @@ private fun LazyListScope.configuredMetaSectionItems(
     onTrailerClick: (MetaTrailer) -> Unit,
     progressByVideoId: Map<String, WatchProgressEntry>,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String> = emptySet(),
     blurUnwatchedEpisodes: Boolean,
     onEpisodeClick: (MetaVideo) -> Unit,
     onEpisodeLongPress: (MetaVideo) -> Unit,
@@ -2128,6 +2134,7 @@ private fun LazyListScope.configuredMetaSectionItems(
                     onTrailerClick = onTrailerClick,
                     progressByVideoId = progressByVideoId,
                     watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                     onEpisodeClick = onEpisodeClick,
                     onEpisodeLongPress = onEpisodeLongPress,
@@ -2351,6 +2358,7 @@ private fun ConfiguredMetaSections(
     onTrailerClick: (MetaTrailer) -> Unit,
     progressByVideoId: Map<String, WatchProgressEntry>,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String> = emptySet(),
     blurUnwatchedEpisodes: Boolean,
     onEpisodeClick: (MetaVideo) -> Unit,
     onEpisodeLongPress: (MetaVideo) -> Unit,
@@ -2498,6 +2506,7 @@ private fun ConfiguredMetaSections(
                         title = meta.collectionName.orEmpty(),
                         items = meta.collectionItems,
                         watchedKeys = watchedKeys,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         showHeader = showHeader,
                         horizontalScrollPadding = horizontalScrollPadding,
                         onPosterClick = onOpenMeta,
@@ -2515,6 +2524,7 @@ private fun ConfiguredMetaSections(
                         title = stringResource(Res.string.details_more_like_this),
                         items = meta.moreLikeThis,
                         watchedKeys = watchedKeys,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         showHeader = showHeader,
                         horizontalScrollPadding = horizontalScrollPadding,
                         sourceLabel = sourceLabel,

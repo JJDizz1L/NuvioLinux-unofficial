@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -98,6 +99,9 @@ fun <T> NuvioShelfSection(
         key?.let { entries.withDuplicateSafeLazyKeys(it) }
     }
 
+    ScreenActivityEffect(state) { active ->
+        if (!active) state.stopScroll()
+    }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap + NuvioTokens.Space.s2),
@@ -519,7 +523,6 @@ private fun NuvioPosterShape.cardWidth(basePosterWidthDp: Int): Dp =
         NuvioPosterShape.Square -> basePosterWidthDp.dp
         NuvioPosterShape.Landscape -> landscapePosterWidth(basePosterWidthDp)
     }
-
 @Composable
 internal fun Modifier.desktopPosterHoverScale(
     enabled: Boolean = true,

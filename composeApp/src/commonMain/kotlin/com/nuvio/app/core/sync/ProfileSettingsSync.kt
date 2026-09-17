@@ -99,6 +99,12 @@ object ProfileSettingsSync {
         ProviderCredentialSync.clearAccountState()
     }
 
+    fun onProfileChanged() {
+        if (observeJob?.isActive != true) return
+        skipNextPushSignature = currentObservedStateSignature()
+        ProviderCredentialSync.onProfileChanged()
+    }
+
     suspend fun pull(profileId: Int): Boolean {
         ensureRepositoriesLoaded()
         return syncMutex.withLock {
@@ -181,6 +187,7 @@ object ProfileSettingsSync {
             ThemeSettingsRepository.amoledEnabled.map { "amoled" },
             ThemeSettingsRepository.liquidGlassNativeTabBarEnabled.map { "liquid_glass_tab_bar" },
             ThemeSettingsRepository.desktopNavigationLayout.map { "desktop_navigation_layout" },
+            ThemeSettingsRepository.navBarGlowEnabled.map { "nav_bar_glow_enabled" },
             ThemeSettingsRepository.navBarStyle.map { "nav_bar_style" },
             PosterCardStyleRepository.uiState.map { "poster_card_style" },
             CardDepthStyleRepository.uiState.map { "card_depth_style" },
@@ -199,13 +206,14 @@ object ProfileSettingsSync {
 
         observeJob = scope.launch {
             combine(signatureFlows) { currentObservedStateSignature() }
-                .drop(1)
                 .distinctUntilChanged()
+                .drop(1)
                 .debounce(PUSH_DEBOUNCE_MS)
                 .collect { signature ->
                     val authState = AuthRepository.state.value
                     if (authState !is AuthState.Authenticated || authState.isAnonymous) return@collect
                     if (isApplyingRemoteBlob || isServerSyncInFlight) return@collect
+                    if (signature != currentObservedStateSignature()) return@collect
                     if (signature == skipNextPushSignature) {
                         skipNextPushSignature = null
                         return@collect

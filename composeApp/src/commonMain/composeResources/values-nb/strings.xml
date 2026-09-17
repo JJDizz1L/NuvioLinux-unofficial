@@ -315,6 +315,7 @@
     <string name="compose_nav_library">Bibliotek</string>
     <string name="compose_nav_profile">Profil</string>
     <string name="compose_nav_search">Søk</string>
+    <string name="compose_nav_settings">Innstillinger</string>
     <string name="compose_player_audio_tracks">Lydspor</string>
     <string name="compose_player_audio">Lyd</string>
     <string name="compose_player_built_in">Innebygd</string>
@@ -857,11 +858,8 @@
     <string name="settings_playback_timeout_unlimited">Ubegrenset</string>
     <string name="settings_playback_tunneled_playback">Tunneled avspilling</string>
     <string name="settings_playback_tunneled_playback_description">Maskinvarenivå lyd/video-synk. Kan forbedre avspilling på noen Android TV-enheter.</string>
-    <string name="settings_tmdb_add_api_key_first">Legg til din egen TMDB API-nøkkel før du skrur på berikelse.</string>
-    <string name="settings_tmdb_api_key_label">API-nøkkel</string>
     <string name="settings_tmdb_enable_enrichment">Aktiver TMDB-berikelse</string>
     <string name="settings_tmdb_enable_enrichment_description">Bruk TMDB som metadata-kilde for å forbedre tilleggsdata</string>
-    <string name="settings_tmdb_enter_api_key">Skriv inn din TMDB v3 API-nøkkel.</string>
     <string name="settings_tmdb_language_code_label">Språkkode</string>
     <string name="settings_tmdb_module_artwork">Grafikk</string>
     <string name="settings_tmdb_module_artwork_description">Logo og bakgrunnsbilder fra TMDB</string>
@@ -885,10 +883,8 @@
     <string name="settings_tmdb_module_season_posters_description">Bruk TMDB sesongplakater i metadata-skjermen for serier.</string>
     <string name="settings_tmdb_module_trailers">Trailere</string>
     <string name="settings_tmdb_module_trailers_description">Trailer-kandidater fra TMDB videoer</string>
-    <string name="settings_tmdb_personal_api_key">Personlig API-nøkkel</string>
     <string name="settings_tmdb_preferred_language">Språk</string>
     <string name="settings_tmdb_preferred_language_description">TMDB metadata-språk for tittel, logo og aktiverte felt</string>
-    <string name="settings_tmdb_section_credentials">LEGITIMASJONER</string>
     <string name="settings_tmdb_section_localization">LOKALISERING</string>
     <string name="settings_tmdb_section_modules">MODULER</string>
     <string name="settings_tmdb_section_title">TMDB-BERIKELSE</string>

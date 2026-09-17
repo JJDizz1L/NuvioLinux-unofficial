@@ -47,8 +47,6 @@ import org.jetbrains.compose.resources.stringResource
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PlayerScreenContent(args: PlayerScreenArgs) {
-    LockPlayerToLandscape()
-
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
@@ -116,7 +114,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         runtime.episodeStreamsRepoState = episodeStreamsRepoState
         runtime.metaUiState = metaUiState
         runtime.addonsUiState = addonsUiState
-        runtime.addonSubtitles = addonSubtitles
+        runtime.addonSubtitles = mergeStreamAndAddonSubtitles(addonSubtitles, runtime.externalSubtitles)
         runtime.isLoadingAddonSubtitles = isLoadingAddonSubtitles
         runtime.horizontalSafePadding = horizontalSafePadding
         runtime.metrics = metrics

@@ -43,9 +43,10 @@ object TmdbSettingsRepository {
         return _uiState.value
     }
 
+    fun effectiveApiKey(): String = snapshot().apiKey.ifBlank { TmdbConfig.API_KEY }
+
     fun setEnabled(value: Boolean) {
         ensureLoaded()
-        if (value && apiKey.isBlank()) return
         if (enabled == value) return
         enabled = value
         publish()
@@ -57,12 +58,9 @@ object TmdbSettingsRepository {
         val normalized = value.trim()
         if (apiKey == normalized) return
         apiKey = normalized
-        if (apiKey.isBlank()) {
-            enabled = false
-            TmdbSettingsStorage.saveEnabled(false)
-        }
         publish()
         TmdbSettingsStorage.saveApiKey(normalized)
+        invalidateMetadata()
     }
 
     fun setLanguage(value: String) {
@@ -108,7 +106,7 @@ object TmdbSettingsRepository {
         useReleaseDates = value
         publish()
         TmdbSettingsStorage.saveUseReleaseDates(value)
-        invalidateReleaseDateMetadata()
+        invalidateMetadata()
     }
 
     fun setUseCredits(value: Boolean) = setBoolean(
@@ -175,10 +173,11 @@ object TmdbSettingsRepository {
 
     private fun loadFromDisk() {
         val wasLoaded = hasLoaded
+        val previousApiKey = apiKey
         val previousUseReleaseDates = useReleaseDates
         hasLoaded = true
+        enabled = TmdbSettingsStorage.loadEnabled() ?: false
         apiKey = TmdbSettingsStorage.loadApiKey()?.trim().orEmpty()
-        enabled = (TmdbSettingsStorage.loadEnabled() ?: false) && apiKey.isNotBlank()
         val storedLanguage = TmdbSettingsStorage.loadLanguage()
         language = if (storedLanguage == null) "en" else normalizeLanguage(storedLanguage)
         useTrailers = TmdbSettingsStorage.loadUseTrailers() ?: true
@@ -194,8 +193,8 @@ object TmdbSettingsRepository {
         useMoreLikeThis = TmdbSettingsStorage.loadUseMoreLikeThis() ?: true
         useCollections = TmdbSettingsStorage.loadUseCollections() ?: true
         publish()
-        if (wasLoaded && previousUseReleaseDates != useReleaseDates) {
-            invalidateReleaseDateMetadata()
+        if (wasLoaded && (previousApiKey != apiKey || previousUseReleaseDates != useReleaseDates)) {
+            invalidateMetadata()
         }
     }
 
@@ -219,7 +218,7 @@ object TmdbSettingsRepository {
         )
     }
 
-    private fun invalidateReleaseDateMetadata() {
+    private fun invalidateMetadata() {
         MetaDetailsRepository.clear()
         ContinueWatchingEnrichmentCache.clearAll(ProfileRepository.activeProfileId)
     }

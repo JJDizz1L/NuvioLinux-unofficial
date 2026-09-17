@@ -28,7 +28,6 @@ internal actual object TmdbSettingsStorage {
     private const val useCollectionsKey = "tmdb_use_collections"
     private val syncKeys = listOf(
         enabledKey,
-        apiKeyKey,
         languageKey,
         useTrailersKey,
         useArtworkKey,
@@ -83,7 +82,6 @@ internal actual object TmdbSettingsStorage {
 
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadEnabled()?.let { put(enabledKey, encodeSyncBoolean(it)) }
-        loadApiKey()?.let { put(apiKeyKey, encodeSyncString(it)) }
         loadLanguage()?.let { put(languageKey, encodeSyncString(it)) }
         loadUseTrailers()?.let { put(useTrailersKey, encodeSyncBoolean(it)) }
         loadUseArtwork()?.let { put(useArtworkKey, encodeSyncBoolean(it)) }
@@ -102,7 +100,6 @@ internal actual object TmdbSettingsStorage {
     actual fun replaceFromSyncPayload(payload: JsonObject) {
         store.removeAll(syncKeys.map(ProfileScopedKey::of))
         payload.decodeSyncBoolean(enabledKey)?.let(::saveEnabled)
-        payload.decodeSyncString(apiKeyKey)?.let(::saveApiKey)
         payload.decodeSyncString(languageKey)?.let(::saveLanguage)
         payload.decodeSyncBoolean(useTrailersKey)?.let(::saveUseTrailers)
         payload.decodeSyncBoolean(useArtworkKey)?.let(::saveUseArtwork)

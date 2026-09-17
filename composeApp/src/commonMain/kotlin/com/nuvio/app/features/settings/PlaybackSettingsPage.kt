@@ -369,6 +369,22 @@ private fun PlaybackSettingsSection(
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
+                    title = stringResource(Res.string.playback_show_loading_status),
+                    description = stringResource(Res.string.playback_show_loading_status_sub),
+                    checked = autoPlayPlayerSettings.showPlayerLoadingStatus,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setShowPlayerLoadingStatus,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_playback_pause_overlay),
+                    description = stringResource(Res.string.settings_playback_pause_overlay_description),
+                    checked = autoPlayPlayerSettings.pauseOverlayEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setPauseOverlayEnabled,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_parental_guide),
                     description = stringResource(Res.string.settings_playback_parental_guide_description),
                     checked = autoPlayPlayerSettings.showParentalGuide,
@@ -633,7 +649,7 @@ private fun PlaybackSettingsSection(
                         onClick = { showSubtitleOutlineColorDialog = true },
                     )
                 }
-                val showLibassSettings = !isIos && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv
+                val showLibassSettings = !isIos && (isDesktop || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
                 if (showLibassSettings) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
@@ -644,7 +660,7 @@ private fun PlaybackSettingsSection(
                         isTablet = isTablet,
                         onCheckedChange = PlayerSettingsRepository::setUseLibass,
                     )
-                    if (useLibass) {
+                    if (useLibass && !isDesktop) {
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
                             title = stringResource(Res.string.settings_playback_render_type),
@@ -891,21 +907,23 @@ private fun PlaybackSettingsSection(
 
         if (!isIos) {
             val decoderEnabled = !autoPlayPlayerSettings.externalPlayerEnabled
-            val exoOptionsEnabled = decoderEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv
-            val libmpvOptionsVisible = androidPlaybackEngine != AndroidPlaybackEngine.ExoPlayer
+            val exoOptionsEnabled = decoderEnabled && (isDesktop || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
+            val libmpvOptionsVisible = !isDesktop && androidPlaybackEngine != AndroidPlaybackEngine.ExoPlayer
             val libmpvOptionsEnabled = decoderEnabled && libmpvOptionsVisible
             SettingsSection(
                 title = stringResource(Res.string.settings_playback_section_decoder),
                 isTablet = isTablet,
             ) {
                 SettingsGroup(isTablet = isTablet) {
-                    SettingsNavigationRow(
-                        title = stringResource(Res.string.settings_playback_engine),
-                        description = androidPlaybackEngine.label,
-                        enabled = decoderEnabled,
-                        isTablet = isTablet,
-                        onClick = { showPlaybackEngineDialog = true },
-                    )
+                    if (!isDesktop) {
+                        SettingsNavigationRow(
+                            title = stringResource(Res.string.settings_playback_engine),
+                            description = androidPlaybackEngine.label,
+                            enabled = decoderEnabled,
+                            isTablet = isTablet,
+                            onClick = { showPlaybackEngineDialog = true },
+                        )
+                    }
                     if (libmpvOptionsVisible) {
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
@@ -934,7 +952,9 @@ private fun PlaybackSettingsSection(
                             onCheckedChange = PlayerSettingsRepository::setAndroidLibmpvYuv420pEnabled,
                         )
                     }
-                    SettingsGroupDivider(isTablet = isTablet)
+                    if (!isDesktop) {
+                        SettingsGroupDivider(isTablet = isTablet)
+                    }
                     SettingsNavigationRow(
                         title = stringResource(Res.string.settings_playback_decoder_priority),
                         description = decoderPriorityLabel(decoderPriority),
@@ -942,24 +962,26 @@ private fun PlaybackSettingsSection(
                         isTablet = isTablet,
                         onClick = { showDecoderPriorityDialog = true },
                     )
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_map_dv7_to_hevc),
-                        description = stringResource(Res.string.settings_playback_map_dv7_to_hevc_description),
-                        checked = mapDV7ToHevc,
-                        enabled = exoOptionsEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setMapDV7ToHevc,
-                    )
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_tunneled_playback),
-                        description = stringResource(Res.string.settings_playback_tunneled_playback_description),
-                        checked = tunnelingEnabled,
-                        enabled = exoOptionsEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setTunnelingEnabled,
-                    )
+                    if (!isDesktop) {
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsSwitchRow(
+                            title = stringResource(Res.string.settings_playback_map_dv7_to_hevc),
+                            description = stringResource(Res.string.settings_playback_map_dv7_to_hevc_description),
+                            checked = mapDV7ToHevc,
+                            enabled = exoOptionsEnabled,
+                            isTablet = isTablet,
+                            onCheckedChange = PlayerSettingsRepository::setMapDV7ToHevc,
+                        )
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsSwitchRow(
+                            title = stringResource(Res.string.settings_playback_tunneled_playback),
+                            description = stringResource(Res.string.settings_playback_tunneled_playback_description),
+                            checked = tunnelingEnabled,
+                            enabled = exoOptionsEnabled,
+                            isTablet = isTablet,
+                            onCheckedChange = PlayerSettingsRepository::setTunnelingEnabled,
+                        )
+                    }
                 }
             }
         }

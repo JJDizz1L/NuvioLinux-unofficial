@@ -1,5 +1,6 @@
 package com.nuvio.app.features.player
 
+import com.nuvio.app.features.downloads.DownloadSubtitles
 import com.nuvio.app.features.player.skip.SkipInterval
 import com.nuvio.app.features.player.skip.SkipIntroRepository
 import kotlinx.coroutines.CoroutineScope
@@ -46,12 +47,23 @@ suspend fun prepareExternalPlayerLaunch(
         async {
             onOverlayMessage(getString(Res.string.player_external_loading_subtitles))
 
-            val subtitles = SubtitleForwarder.fetchForExternalPlayer(
-                type = type,
-                videoId = videoId,
-                preferredLanguage = preferredLanguage,
-                secondaryLanguage = secondaryLanguage,
-            )
+            val downloadedSubtitles = DownloadSubtitles.localSubtitles(request.sourceUrl)
+            val subtitles = if (downloadedSubtitles.isNotEmpty()) {
+                downloadedSubtitles
+                    .filter {
+                        languageMatchesPreference(it.language, preferredLanguage) ||
+                            (secondaryLanguage != null && languageMatchesPreference(it.language, secondaryLanguage))
+                    }
+                    .map { SubtitleInput(it.url, it.name ?: it.language, it.language) }
+                    .ifEmpty { null }
+            } else {
+                SubtitleForwarder.fetchForExternalPlayer(
+                    type = type,
+                    videoId = videoId,
+                    preferredLanguage = preferredLanguage,
+                    secondaryLanguage = secondaryLanguage,
+                )
+            }
 
             if (subtitles != null) {
                 onOverlayMessage(getString(Res.string.player_external_downloading_subtitles))

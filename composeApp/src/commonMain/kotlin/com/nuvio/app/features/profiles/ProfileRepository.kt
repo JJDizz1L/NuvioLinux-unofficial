@@ -5,6 +5,7 @@ import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.auth.isAnonymous
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.putSyncOriginClientId
 import com.nuvio.app.core.tracking.ensureTrackingProvidersRegistered
 import com.nuvio.app.features.addons.AddonRepository
@@ -197,6 +198,7 @@ object ProfileRepository {
         CollectionRepository.onProfileChanged()
         CollectionMobileSettingsRepository.onProfileChanged()
         DownloadsRepository.onProfileChanged()
+        ProfileSettingsSync.onProfileChanged()
     }
 
     suspend fun pushProfiles(profiles: List<ProfilePushPayload>) {

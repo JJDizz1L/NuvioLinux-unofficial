@@ -26,11 +26,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +48,9 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
+import com.nuvio.app.core.ui.LocalPosterClickAnchor
+import com.nuvio.app.navigation.PosterNavigationState
+import com.nuvio.app.navigation.posterNavigationEntry
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.auth.DeviceSessionRegistration
@@ -94,7 +99,9 @@ import com.nuvio.app.features.cloud.providerPosterUrl
 import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.collection.CollectionSyncService
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.downloads.DownloadItem
+import com.nuvio.app.features.downloads.DownloadSubtitles
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
@@ -124,6 +131,8 @@ import com.nuvio.app.features.player.PlayerPlaybackSnapshot
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.player.SubtitleLanguageOption
 import com.nuvio.app.features.player.prepareExternalPlayerLaunch
+import com.nuvio.app.features.player.LockPlayerToLandscape
+import com.nuvio.app.features.player.HidePlayerSystemBars
 import com.nuvio.app.features.player.rememberExternalPlayerLauncher
 import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.settings.AccountSettingsScreen
@@ -138,6 +147,8 @@ import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.streams.BingeGroupCacheRepository
 import com.nuvio.app.features.streams.StreamAutoPlayPolicy
 import com.nuvio.app.features.streams.StreamLaunch
+import com.nuvio.app.features.streams.PlaybackAvailability
+import com.nuvio.app.features.streams.rememberPlaybackAvailability
 import com.nuvio.app.features.streams.StreamLaunchStore
 import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.tracking.TrackingLibraryTab
@@ -205,17 +216,26 @@ internal fun MainAppContent(
     onSwitchProfile: () -> Unit = {},
 ) {
         val navBackStack = rememberNavBackStack(navigationSavedStateConfiguration, initialRoute)
+        val posterNavigation = remember { PosterNavigationState() }
+        val metaScreenSettings by remember {
+            MetaScreenSettingsRepository.ensureLoaded()
+            MetaScreenSettingsRepository.uiState
+        }.collectAsStateWithLifecycle()
+        val posterNavigationEnabled = supportsPosterNavigationMotion &&
+            metaScreenSettings.posterTransitionEnabled && onNavigate == null
         val routeDisposalDecorator = remember {
             RouteDisposalNavEntryDecorator<NavKey> { key ->
                 if (key is AppRoute) disposeRoute(key)
             }
         }
-        val navController = remember(navBackStack, onNavigate, onGoBack, onReplace) {
+        val navController = remember(navBackStack, onNavigate, onGoBack, onReplace, posterNavigationEnabled) {
             NuvioNavigator(
                 backStack = navBackStack,
                 onExternalNavigate = onNavigate,
                 onExternalBack = onGoBack,
                 onExternalReplace = onReplace,
+                onLocalNavigate = if (posterNavigationEnabled) posterNavigation::navigate else null,
+                onLocalPop = if (posterNavigationEnabled) posterNavigation::clear else null,
             )
         }
         val appUpdaterController = rememberAppUpdaterController()
@@ -238,6 +258,18 @@ internal fun MainAppContent(
         val currentRoute = navBackStack.lastOrNull() as? AppRoute
         var registeredPlayerSystemBack by remember {
             mutableStateOf<Pair<PlayerRoute, () -> Unit>?>(null)
+        }
+        LaunchedEffect(currentRoute, posterNavigationEnabled) {
+            val request = posterNavigation.active
+            if (!posterNavigationEnabled || (request != null && currentRoute != request.to)) posterNavigation.clear()
+        }
+        LaunchedEffect(posterNavigation.active?.to) {
+            posterNavigation.active?.to?.let { route ->
+                MetaDetailsRepository.load(route.type, route.id)
+            }
+        }
+        DisposableEffect(posterNavigation) {
+            onDispose { posterNavigation.clear() }
         }
         val liquidGlassNativeTabBarEnabled by remember {
             ThemeSettingsRepository.liquidGlassNativeTabBarEnabled
@@ -288,6 +320,12 @@ internal fun MainAppContent(
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
+    var visiblePlayerEntries by remember { mutableIntStateOf(0) }
+    var streamLandscapeLoadingVisible by remember(currentRoute) { mutableStateOf(false) }
+    if (currentRoute is PlayerRoute || visiblePlayerEntries > 0 || streamLandscapeLoadingVisible) {
+        LockPlayerToLandscape()
+        HidePlayerSystemBars()
+    }
     val p2pSettingsUiState by remember {
         P2pSettingsRepository.ensureLoaded()
         P2pSettingsRepository.uiState
@@ -304,6 +342,8 @@ internal fun MainAppContent(
     val networkStatusUiState by remember {
         NetworkStatusRepository.uiState
     }.collectAsStateWithLifecycle()
+    val playbackAvailability = rememberPlaybackAvailability()
+    val playbackUnavailableMessage = stringResource(Res.string.playback_unavailable_message)
     val downloadedProviderLabel = stringResource(Res.string.provider_downloaded)
     val externalPlayerNotConfiguredText = stringResource(Res.string.external_player_not_configured)
     val externalPlayerUnavailableText = stringResource(Res.string.external_player_unavailable)
@@ -386,8 +426,9 @@ internal fun MainAppContent(
         liquidGlassNativeTabBarSupported,
         liquidGlassNativeTabBarEnabled,
         useNativeNavigation,
+        onActivate,
+        initialTab,
         currentRoute,
-        selectedTab,
     ) {
         NativeTabBridge.requestedTabs.collectLatest { requestedTab ->
             val requestedAppTab = requestedTab.toAppScreenTab()
@@ -432,10 +473,12 @@ internal fun MainAppContent(
         )
     }
 
-    LaunchedEffect(selectedTab) {
-        NativeTabBridge.publishSelectedTab(selectedTab.toNativeNavigationTab())
-        if (selectedTab != AppScreenTab.Search) {
-            searchFocusRequestCount = 0
+    LaunchedEffect(initialTab) {
+        snapshotFlow { selectedTab }.collectLatest { tab ->
+            NativeTabBridge.publishSelectedTab(tab.toNativeNavigationTab())
+            if (tab != AppScreenTab.Search) {
+                searchFocusRequestCount = 0
+            }
         }
     }
 
@@ -831,7 +874,7 @@ internal fun MainAppContent(
                 sendSkipSegments = shouldSendSkipSegments,
                 preferredLanguage = playerSettingsUiState.preferredSubtitleLanguage,
                 secondaryLanguage = playerSettingsUiState.secondaryPreferredSubtitleLanguage,
-                onOverlayMessage = { _ -> },
+                onOverlayMessage = { message -> StreamsRepository.setOverlayVisible(true, message) },
             )
             StreamsRepository.setOverlayVisible(false)
             return when (
@@ -871,7 +914,7 @@ internal fun MainAppContent(
                 sourceUrl = sourceUrl,
                 sourceHeaders = emptyMap(),
                 sourceResponseHeaders = emptyMap(),
-                externalSubtitles = emptyList(),
+                externalSubtitles = DownloadSubtitles.localSubtitles(sourceUrl),
                 streamType = null,
                 logo = item.logo,
                 poster = item.poster,
@@ -993,7 +1036,7 @@ internal fun MainAppContent(
                         sourceUrl = localSourceUrl,
                         sourceHeaders = emptyMap(),
                         sourceResponseHeaders = emptyMap(),
-                        externalSubtitles = emptyList(),
+                        externalSubtitles = DownloadSubtitles.localSubtitles(localSourceUrl),
                         logo = logo,
                         poster = poster,
                         background = background,
@@ -1021,6 +1064,11 @@ internal fun MainAppContent(
                     navController.navigate(PlayerRoute(launchId = launchId, title = playerLaunch.title))
                     return
                 }
+            }
+
+            if (!PlaybackAvailability.current().canStream(type, videoId)) {
+                NuvioToastController.show(playbackUnavailableMessage)
+                return
             }
 
             val streamLaunchId = StreamLaunchStore.put(
@@ -1139,6 +1187,19 @@ internal fun MainAppContent(
                 ),
             )
         }
+
+        fun canPlayContinueWatching(item: ContinueWatchingItem): Boolean =
+            item.isCloudLibraryContinueWatchingItem() || playbackAvailability.canPlay(
+                type = item.parentMetaType,
+                videoId = item.videoId,
+                parentMetaId = item.parentMetaId,
+                seasonNumber = item.seasonNumber,
+                episodeNumber = item.episodeNumber,
+            )
+
+        fun canSelectContinueWatchingStreams(item: ContinueWatchingItem): Boolean =
+            !item.isCloudLibraryContinueWatchingItem() &&
+                playbackAvailability.canStream(item.parentMetaType, item.videoId)
 
         val openContinueWatching: (ContinueWatchingItem, Boolean, Boolean) -> Unit = { item, manualSelection, startFromBeginning ->
             resumePromptItem = null
@@ -1277,6 +1338,7 @@ internal fun MainAppContent(
             ) {
             SharedTransitionLayout {
                 CompositionLocalProvider(
+                    LocalPosterClickAnchor provides if (posterNavigationEnabled) posterNavigation::prepare else null,
                     LocalUseNativeNavigation provides useNativeNavigation,
                     LocalNativeNavigationBarHidden provides (currentRoute?.hidesNavigationBar == true),
                 ) {
@@ -1319,6 +1381,7 @@ internal fun MainAppContent(
                         state = AppTabState(
                             searchListState = searchListState,
                             homeContentGeneration = appContentGeneration,
+                            profileId = profileState.activeProfile?.profileIndex,
                             searchFocusRequestCount = searchFocusRequestCount,
                             tabsRouteActiveState = rememberUpdatedState(currentRoute is TabsRoute),
                             libraryDisintegrationRequest = libraryDisintegrationRequests.current,
@@ -1518,6 +1581,9 @@ internal fun MainAppContent(
                 ) { route ->
                     StreamDestination(
                         route = route,
+                        onLandscapeLoadingChanged = { visible ->
+                            if (currentRoute == route) streamLandscapeLoadingVisible = visible
+                        },
                         navController = navController,
                         p2pEnabled = p2pSettingsUiState.p2pEnabled,
                         openExternalPlayback = ::openExternalPlayback,
@@ -1537,6 +1603,12 @@ internal fun MainAppContent(
                         emptyMap()
                     },
                 ) { route ->
+                    if (!isIos) {
+                        DisposableEffect(route) {
+                            visiblePlayerEntries += 1
+                            onDispose { visiblePlayerEntries -= 1 }
+                        }
+                    }
                     PlayerDestination(
                         route = route,
                         navController = navController,
@@ -1671,7 +1743,11 @@ internal fun MainAppContent(
                         { key ->
                             routeDisposalDecorator.register(
                                 key = key,
-                                entry = provider(key),
+                                entry = if (posterNavigationEnabled) {
+                                    posterNavigationEntry(key, provider(key), posterNavigation)
+                                } else {
+                                    provider(key)
+                                },
                             )
                         }
                     },
@@ -1846,7 +1922,7 @@ internal fun MainAppContent(
             selectedContinueWatchingForActions?.let { item ->
                 selectedContinueWatchingZoomAnchor?.let { anchor ->
                     key(item.videoId, anchor) {
-                        val showManualPlayOption = StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState)
+                        val showManualPlayOption = StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState) && canSelectContinueWatchingStreams(item)
                         val showDetailsOption = !item.isCloudLibraryContinueWatchingItem()
                         NuvioPosterZoomActionOverlay(
                             imageUrl = cloudLibraryDisplayArtworkUrl(anchor.imageUrl ?: item.poster ?: item.imageUrl),
@@ -1886,7 +1962,7 @@ internal fun MainAppContent(
                                         ),
                                     )
                                 }
-                                if (!item.isNextUp) {
+                                if (!item.isNextUp && canPlayContinueWatching(item)) {
                                     add(
                                         PosterZoomOverlayAction(
                                             icon = Icons.Default.Replay,
@@ -1916,7 +1992,8 @@ internal fun MainAppContent(
 
             NuvioContinueWatchingActionSheet(
                 item = selectedContinueWatchingForActions.takeIf { selectedContinueWatchingZoomAnchor == null },
-                showManualPlayOption = StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState),
+                showManualPlayOption = StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState) &&
+                    selectedContinueWatchingForActions?.let(::canSelectContinueWatchingStreams) == true,
                 showDetailsOption = selectedContinueWatchingForActions?.isCloudLibraryContinueWatchingItem() != true,
                 onDismiss = { selectedContinueWatchingForActions = null },
                 onOpenDetails = {
@@ -1931,7 +2008,7 @@ internal fun MainAppContent(
                     }
                 },
                 onStartFromBeginning = selectedContinueWatchingForActions
-                    ?.takeIf { !it.isNextUp }
+                    ?.takeIf { !it.isNextUp && canPlayContinueWatching(it) }
                     ?.let { item -> { onContinueWatchingStartFromBeginning(item) } },
                 onPlayManually = selectedContinueWatchingForActions
                     ?.let { item -> { onContinueWatchingPlayManually(item) } },

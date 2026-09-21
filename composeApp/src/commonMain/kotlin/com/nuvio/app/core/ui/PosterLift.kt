@@ -3,6 +3,7 @@ package com.nuvio.app.core.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.getValue
@@ -22,6 +23,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalGraphicsContext
 import androidx.compose.ui.unit.Dp
+import com.nuvio.app.isDesktop
 
 internal val LocalPosterClickAnchor = staticCompositionLocalOf<((PosterZoomAnchor) -> Unit)?> { null }
 
@@ -71,6 +73,7 @@ internal fun Modifier.posterCardClickable(
     onLongClick: (() -> Unit)?,
     zoomImageUrl: String? = null,
     zoomCornerRadius: Dp = NuvioTokens.Radius.poster,
+    hoverScaleEnabled: Boolean = true,
 ): Modifier {
     val graphicsContext = LocalGraphicsContext.current
     val source = remember(graphicsContext, zoomImageUrl) { PosterLiftSource(graphicsContext) }
@@ -91,10 +94,28 @@ internal fun Modifier.posterCardClickable(
         }
         .then(this)
     if (onClick == null && onLongClick == null) return posterModifier
-    return posterModifier
+    val interactionSource = remember { MutableInteractionSource() }
+    val handleLongClick = onLongClick?.let { longClick ->
+        {
+            source.bounds?.let { cardBounds ->
+                PosterZoomAnchorHolder.stash(
+                    PosterZoomAnchor(cardBounds, zoomImageUrl, zoomCornerRadius).also {
+                        it.source = source
+                    },
+                )
+            }
+            longClick()
+        }
+    }
+    return Modifier
+        .desktopPosterHoverScale(
+            enabled = hoverScaleEnabled,
+            interactionSource = interactionSource,
+        )
+        .then(posterModifier)
         .combinedClickable(
-            interactionSource = null,
-            indication = if (onPosterClickAnchor == null) LocalIndication.current else null,
+            interactionSource = interactionSource,
+            indication = if (!isDesktop && onPosterClickAnchor == null) LocalIndication.current else null,
             onClick = {
                 if (onClick != null) {
                     source.bounds?.let { bounds ->
@@ -105,19 +126,9 @@ internal fun Modifier.posterCardClickable(
                     onClick()
                 }
             },
-            onLongClick = onLongClick?.let { longClick ->
-                {
-                    source.bounds?.let { cardBounds ->
-                        PosterZoomAnchorHolder.stash(
-                            PosterZoomAnchor(cardBounds, zoomImageUrl, zoomCornerRadius).also {
-                                it.source = source
-                            },
-                        )
-                    }
-                    longClick()
-                }
-            },
+            onLongClick = handleLongClick,
         )
+        .secondaryClick(handleLongClick)
 }
 
 internal fun DrawScope.drawLiftedPoster(source: PosterLiftSource) {

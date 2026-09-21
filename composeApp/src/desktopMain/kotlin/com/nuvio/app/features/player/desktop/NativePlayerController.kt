@@ -970,13 +970,17 @@ internal class NativePlayerController(
             .filter(String::isNotEmpty)
             .map(String::lowercase)
         if (preferredLanguages.isEmpty()) return
-        val trackIndex = getAudioTracks().indexOfFirst { track ->
-            val language = track.language?.lowercase() ?: return@indexOfFirst false
-            preferredLanguages.any { preferred ->
+        val audioTracks = getAudioTracks()
+        for(preferred in preferredLanguages){
+            val trackIndex = audioTracks.indexOfFirst { track ->
+                val language = track.language?.lowercase() ?: return@indexOfFirst false
                 language == preferred || language.startsWith("$preferred-")
             }
+            if (trackIndex >= 0) {
+                selectAudioTrack(trackIndex)
+                return
+            }
         }
-        if (trackIndex >= 0) selectAudioTrack(trackIndex)
     }
 
     override fun selectAudioTrack(index: Int) {
@@ -1379,6 +1383,8 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean): String =
         appendJsonField("offLabel", offLabel)
         append(',')
         appendJsonField("themeAccentColor", themeAccentColor)
+        append(',')
+        appendJsonArrayField("themeAccentGradientColors", themeAccentGradientColors) { append(it.toJsonString()) }
         append(',')
         appendJsonField("themeAccentStrongColor", themeAccentStrongColor)
         append(',')

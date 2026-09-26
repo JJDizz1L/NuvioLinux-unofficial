@@ -98,7 +98,9 @@ object CatalogRepository {
             try {
                 val target = request.target as CatalogTarget.Library
                 LibraryRepository.ensureLoaded()
-                LibraryRepository.uiState.libraryCatalogStates(target).collect { state ->
+                LibraryRepository.uiState.libraryCatalogStates(
+                    target, LibraryRepository.uiState.libraryCatalogOrders(target),
+                ).collect { state ->
                     if (activeRequest != request) return@collect
                     _uiState.value = state
                 }
@@ -167,7 +169,7 @@ object CatalogRepository {
                         consecutiveDuplicatePages = if (reset) 0 else current.consecutiveDuplicatePages,
                     )
                     CustomPosterUrlRepository.ensureLoaded()
-                    val posterPattern = CustomPosterUrlRepository.pattern.value
+                    val posterPattern = CustomPosterUrlRepository.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.HOME)
                     _uiState.value = CatalogUiState(
                         items = mergedItems.withCustomPosterUrls(posterPattern),
                         isLoading = false,

@@ -181,7 +181,7 @@ object HomeRepository {
         val preferences = snapshot.preferences
         val todayIsoDate = if (snapshot.hideUnreleasedContent) CurrentDateProvider.todayIsoDate() else null
         CustomPosterUrlRepository.ensureLoaded()
-        val posterPattern = CustomPosterUrlRepository.pattern.value
+        val posterPattern = CustomPosterUrlRepository.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.HOME)
         fun HomeCatalogSection.withReleaseFilter(): HomeCatalogSection =
             if (todayIsoDate == null) this else filterReleasedItems(todayIsoDate)
         fun HomeCatalogSection.withPosterOverlay(): HomeCatalogSection =
@@ -235,7 +235,7 @@ object HomeRepository {
 
     private suspend fun HomeCatalogDefinition.toSection(forceRefresh: Boolean): HomeCatalogSection {
         CustomPosterUrlRepository.ensureLoaded()
-        val pattern = CustomPosterUrlRepository.pattern.value
+        val pattern = CustomPosterUrlRepository.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.HOME)
         val page = if (isDesktop) {
             fetchDesktopHomePreview(forceRefresh)
         } else {
@@ -247,7 +247,7 @@ object HomeRepository {
                 forceRefresh = forceRefresh,
             )
         }
-        val items = page.items.withCustomPosterUrls(pattern)
+        val items = if (pattern.isNotBlank()) page.items.withCustomPosterUrls(pattern) else page.items
         if (items.isEmpty()) {
             return HomeCatalogSection(
                 key = key,

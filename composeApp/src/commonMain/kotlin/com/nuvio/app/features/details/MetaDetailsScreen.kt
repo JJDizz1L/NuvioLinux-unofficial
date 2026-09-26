@@ -412,6 +412,7 @@ fun MetaDetailsScreen(
         tmdbSettingsUiState.enabled,
         tmdbSettingsUiState.useMoreLikeThis,
         tmdbSettingsUiState.language,
+        mdbListSettings,
     ) {
         if (displayedMeta != null && !uiState.isLoading) {
             MetaDetailsRepository.load(type, id)
@@ -1194,7 +1195,7 @@ fun MetaDetailsScreen(
                                     DesktopDetailHero(
                                         meta = meta,
                                         showOverallRatings = metaScreenSettingsUiState.showOverallRatings,
-                                        isMdbListActive = mdbListSettings.enabled && mdbListSettings.hasApiKey,
+                                        isMdbListActive = mdbListSettings.isActive,
                                         playButtonLabel = playButtonLabel,
                                         isSaved = isSaved,
                                         isWatched = isWatched,
@@ -1218,7 +1219,7 @@ fun MetaDetailsScreen(
                                             it.key in desktopHeroOwnedMetaSectionKeys
                                         },
                                     ),
-                                    isMdbListActive = mdbListSettings.enabled && mdbListSettings.hasApiKey,
+                                    isMdbListActive = mdbListSettings.isActive,
                                     meta = meta,
                                     isTablet = true,
                                     contentHorizontalPadding = desktopPageHorizontalPadding,
@@ -2542,6 +2543,7 @@ private fun ConfiguredMetaSections(
                     val sourceLabel = when (meta.moreLikeThisSource) {
                         MoreLikeThisSource.TMDB -> stringResource(Res.string.detail_more_like_this_powered_by_tmdb)
                         MoreLikeThisSource.TRAKT -> stringResource(Res.string.detail_more_like_this_powered_by_trakt)
+                        MoreLikeThisSource.SIMKL -> stringResource(Res.string.detail_more_like_this_powered_by_simkl)
                         null -> null
                     }
                     DetailPosterRailSection(

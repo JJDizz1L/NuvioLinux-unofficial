@@ -106,6 +106,7 @@ fun SearchScreen(
     ScreenActivityEffect(listState) { screenActive ->
         if (!screenActive) {
             isSearchFocused = false
+            focusRequester.freeFocus()
             listState.stopScroll()
         }
     }
@@ -282,11 +283,17 @@ fun SearchScreen(
                     androidx.compose.foundation.layout.Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                         NuvioInputField(
                             value = query,
-                            onValueChange = { query = it },
+                            onValueChange = {
+                                focusRequester.captureFocus()
+                                query = it
+                            },
                             placeholder = stringResource(Res.string.compose_search_placeholder),
                             modifier = Modifier
                                 .focusRequester(focusRequester)
-                                .onFocusChanged { isSearchFocused = it.isFocused },
+                                .onFocusChanged {
+                                    isSearchFocused = it.isFocused
+                                    if (query.isNotBlank()) focusRequester.captureFocus()
+                                },
                             trailingContent = if (query.isNotBlank()) {
                                 {
                                     IconButton(onClick = { query = "" }) {
@@ -309,6 +316,7 @@ fun SearchScreen(
 
         if (query.isBlank()) {
             if (isSearchFocused && recentSearches.isNotEmpty()) {
+                focusRequester.captureFocus()
                 item(key = "recent_searches") {
                     SearchRecentSection(
                         recentSearches = recentSearches,

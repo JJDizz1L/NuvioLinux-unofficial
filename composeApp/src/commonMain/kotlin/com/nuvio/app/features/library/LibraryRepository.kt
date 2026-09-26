@@ -34,6 +34,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,6 +100,15 @@ object LibraryRepository {
                     }
                 }
             }
+        }
+        syncScope.launch {
+            kotlinx.coroutines.flow.combine(
+                CustomPosterUrlRepository.pattern,
+                CustomPosterUrlRepository.enabledScreens
+            ) { _, _ -> Unit }
+                .distinctUntilChanged()
+                .drop(1)
+                .collectLatest { publish() }
         }
     }
 
@@ -397,6 +407,19 @@ object LibraryRepository {
                 .flatMap { provider -> provider.snapshot().tabs },
         ).filter { tab -> item == null || tab.supportsContentType(item.type) }
 
+    internal fun listManagementContext(): LibraryManagementContext? {
+        val source = effectiveLibrarySourceMode()
+        val provider = activeLibraryProvider(source) ?: return null
+        if (provider.listManager == null) return null
+        val account = TrackingProviderRegistry.authProvider(provider.providerId) ?: return null
+        return LibraryManagementContext(ProfileRepository.activeProfileId, source, account.accountGeneration)
+    }
+
+    internal fun listManager(context: LibraryManagementContext): com.nuvio.app.features.tracking.TrackingListManager {
+        check(context == listManagementContext()) { "Library account changed" }
+        return requireNotNull(activeLibraryProvider(context.source)?.listManager)
+    }
+
     suspend fun getMembershipSnapshot(item: LibraryItem): Map<String, Boolean> {
         ensureLoaded()
         val inLocal = localState.contains(item.id, item.type)
@@ -577,7 +600,7 @@ object LibraryRepository {
     private fun publish() {
         val localSnapshot = localState.snapshot()
         val sourceMode = effectiveLibrarySourceMode()
-        val posterPattern = CustomPosterUrlRepository.pattern.value
+        val posterPattern = CustomPosterUrlRepository.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.LIBRARY)
         activeLibraryProvider(sourceMode)?.let { provider ->
             val providerSnapshot = provider.snapshot()
             val newUiState = LibraryUiState(

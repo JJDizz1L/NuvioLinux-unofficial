@@ -248,6 +248,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         episodeText = episodeText,
         streamTitle = activeStreamTitle,
         providerName = activeProviderName,
+        pauseOverlayEnabled = playerSettingsUiState.pauseOverlayEnabled,
         pauseOverlayWatchingLabel = stringResource(Res.string.compose_player_youre_watching),
         pauseOverlayLogo = logo,
         pauseOverlayEpisodeInfo = if (seasonNumber != null && episodeNumber != null) {
@@ -522,7 +523,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     playerControllerSourceUrl = surfaceSource?.sourceUrl
                 },
                 onSnapshot = { snapshot ->
-                    updatePlaybackSnapshot(snapshot)
+                    if (!updatePlaybackSnapshot(snapshot)) return@PlatformPlayerSurface
                     refreshAudioTracksIfChanged()
                     if (!snapshot.isLoading) initialLoadCompleted = true
                     if (snapshot.isEnded) {
@@ -1687,16 +1688,12 @@ private fun BoxScope.RenderPlaybackOverlays(
             nextEpisodeAutoPlayCountdown = nextEpisodeAutoPlayCountdown,
             blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
             onPlayNextEpisode = {
-                nextEpisodeAutoPlayJob?.cancel()
                 playNextEpisode()
             },
             onDismissNextEpisode = {
-                nextEpisodeAutoPlayJob?.cancel()
+                cancelNextEpisodeAutoPlay()
                 nextEpisodeCardDismissed = true
                 showNextEpisodeCard = false
-                nextEpisodeAutoPlaySearching = false
-                nextEpisodeAutoPlaySourceName = null
-                nextEpisodeAutoPlayCountdown = null
             },
             errorMessage = errorMessage,
             onDismissError = { requestBack() },

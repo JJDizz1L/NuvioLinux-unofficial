@@ -20,6 +20,46 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "0.5.6",
+          "buildVersion": "138",
+          "date": "2026-10-02T12:45:05Z",
+          "localizedDescription": "- 312f7399 feat(details): use desktop hero layout on tablets @tapframe  \n- b3d7c5b6 feat(settings): show restart prompt when layout direction changes @tapframe  \n- a984b390 fix(ios): declare supported localizations @tapframe  \n- f0f980b3 fix(player): auto-play next episode on end after dismissing prompt @tapframe  \n- [i18n(vi): update latest Vietnamese strings (#2146)](https://github.com/NuvioMedia/NuvioMobile/pull/2146) @blueocean2308  \n- [Preload next episode sources (#2140)](https://github.com/NuvioMedia/NuvioMobile/pull/2140) @skoruppa  \n- [Fix mising poster fallback in Catalog Screen (#2139)](https://github.com/NuvioMedia/NuvioMobile/pull/2139) @skoruppa  \n- [fix(player): backport automatic skip notifications from Desktop (#2137)](https://github.com/NuvioMedia/NuvioMobile/pull/2137) @Laskco  \n",
+          "downloadURL": "https://github.com/NuvioMedia/NuvioMobile/releases/download/0.5.6-beta/nuvio-0.5.6-full-release.ipa",
+          "size": 66690752,
+          "sha256": "503a38bb00d29c05d4d6b89443faf9c5004fbd0cd6496e177e0cb1b4dcd0ce4c",
+          "minOSVersion": "16.1"
+        },
+        {
+          "version": "0.5.5",
+          "buildVersion": "137",
+          "date": "2026-09-30T19:22:54Z",
+          "localizedDescription": "- [feat(i18n): add Bengali (বাংলা) language support and UI localization (#2113)](https://github.com/NuvioMedia/NuvioMobile/pull/2113) @TanvirSdq  \n- [i18n(el): sync Greek translations and remove remaining English loanwords (#2132)](https://github.com/NuvioMedia/NuvioMobile/pull/2132) @nosvasedis  \n- [Landscape clearlogo toggle, Simkl type hint, TMDB source priority, folder TMDB ID resolution (#2084)](https://github.com/NuvioMedia/NuvioMobile/pull/2084) @skoruppa  \n- [fix(UI): Fix hero section sometimes shifting (#2128)](https://github.com/NuvioMedia/NuvioMobile/pull/2128) @ThEgIGN  \n- [fix(player): show the swipe-to-seek preview in the new player layout (#2122)](https://github.com/NuvioMedia/NuvioMobile/pull/2122) @deejay189393  \n- 6aa42153 fix(debrid): select requested episode files @tapframe  \n- [i18n(vi): update latest Vietnamese strings (#2096)](https://github.com/NuvioMedia/NuvioMobile/pull/2096) @blueocean2308  \n- [Translation improvements and adjustments for Slovak language (#2104)](https://github.com/NuvioMedia/NuvioMobile/pull/2104) @mmsw91  \n- [fix(mdblist): show newest library additions first (#2103)](https://github.com/NuvioMedia/NuvioMobile/pull/2103) @halibiram  \n",
+          "downloadURL": "https://github.com/NuvioMedia/NuvioMobile/releases/download/0.5.5-beta/nuvio-0.5.5-full-release.ipa",
+          "size": 66647562,
+          "sha256": "ae4da6ce2738ea36e700b3774e0137dae5b0885d7d88ac46c6720b3be3c82433",
+          "minOSVersion": "16.1"
+        },
+        {
+          "version": "0.5.4",
+          "buildVersion": "136",
+          "date": "2026-09-28T09:23:38Z",
+          "localizedDescription": "- 80860602 fix(player): ignore short clips for tracking @tapframe  \n- cd4572e2 fix(ios): update quickjs to 1.0.15 @tapframe  \n- 9980d643 fix(player): reduce buffer durations @tapframe  \n- 75296263 fix(details): keep custom posters when returning to a title @tapframe  \n- 4bdcfa3a fix(settings): use shared chip on detail page @tapframe  \n- 2b8be69c fix(details): replay watched series from first episode @tapframe  \n- c69b643a fix(player): resume restored player from current position @tapframe  \n- c3920d40 fix(i18n): align episode labels and metadata with tv @tapframe  \n- 24c7c89c fix(streams): prevent rotation during binge group lookup @tapframe  \n- a1a43416 fix(profiles): center pin dialog content @tapframe  \n- [Plugin timeout (#2091)](https://github.com/NuvioMedia/NuvioMobile/pull/2091) @paregi12  \n",
+          "downloadURL": "https://github.com/NuvioMedia/NuvioMobile/releases/download/0.5.4-beta/nuvio-0.5.4-full-release.ipa",
+          "size": 66389579,
+          "sha256": "f605463d51f304564833e82a2fc1478a326c2bea7fa15519d99e854eebb50b94",
+          "minOSVersion": "16.1"
+        },
+        {
+          "version": "0.5.3",
+          "buildVersion": "135",
+          "date": "2026-09-27T01:18:47Z",
+          "localizedDescription": "- 0b7ab892 feat(poster): support addon landscape posters @tapframe  \r\n- 60a0f4b3 feat(library): move downloads to library\r\n- 5ebb8ee5 feat(spinner): change indicator @tapframe  \r\n- [i18n(ur): add Urdu localization (#2067)](https://github.com/NuvioMedia/NuvioMobile/pull/2067) @muzii9  \r\n- 23b048c3 feat(player): add episode shuffle @tapframe  \r\n",
+          "downloadURL": "https://github.com/NuvioMedia/NuvioMobile/releases/download/0.5.3-beta/nuvio-0.5.3-full-release.ipa",
+          "size": 66299682,
+          "sha256": "7ee79b969d904893f3656ab99de0f9611fb9b70141c72f8094d4c04d74f4a72a",
+          "minOSVersion": "16.1"
+        },
+        {
           "version": "0.5.2",
           "buildVersion": "134",
           "date": "2026-09-25T18:03:57Z",

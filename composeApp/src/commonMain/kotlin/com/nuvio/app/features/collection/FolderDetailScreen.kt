@@ -159,7 +159,7 @@ fun FolderDetailScreen(
                         modifier = Modifier.padding(horizontal = desktopPagePadding),
                         backgroundColor = Color.Transparent,
                         includeStatusBarPadding = false,
-                        topPadding = 32.dp,
+                        topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 32.dp,
                         onBack = onBack,
                     )
                 }
@@ -421,6 +421,7 @@ private fun TabbedGridContent(
                             contentPadding = PaddingValues(
                                 start = pageHorizontalPadding,
                                 end = pageHorizontalPadding,
+                                top = if (isDesktop) 8.dp else 4.dp,
                                 bottom = nuvioSafeBottomPadding(18.dp),
                             ),
                             horizontalArrangement = Arrangement.spacedBy(if (isDesktop) 12.dp else 10.dp),
@@ -571,7 +572,6 @@ private fun PaginationLoadingFooter() {
     ) {
         NuvioLoadingIndicator(
             modifier = Modifier.size(28.dp),
-            color = MaterialTheme.colorScheme.primary,
         )
     }
 }
@@ -584,7 +584,6 @@ private fun LoadingIndicator() {
     ) {
         NuvioLoadingIndicator(
             modifier = Modifier.size(32.dp),
-            color = MaterialTheme.colorScheme.primary,
         )
     }
 }

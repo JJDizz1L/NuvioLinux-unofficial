@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
@@ -481,7 +482,7 @@ private fun DefaultHomeHeroFrame(
                 modifier = Modifier
                     .fillMaxWidth(layout.contentWidthFraction)
                     .widthIn(max = layout.contentMaxWidth),
-                contentAlignment = if (layout.isTablet) Alignment.CenterStart else Alignment.Center,
+                contentAlignment = if (layout.isTablet) Alignment.CenterStart else Alignment.BottomStart,
             ) {
                 HeroContentLayers(
                     items = items,
@@ -623,7 +624,7 @@ private fun DesktopHomeHeroFrame(
                     )
                     .fillMaxWidth(layout.contentWidthFraction)
                     .widthIn(max = layout.contentMaxWidth),
-                contentAlignment = Alignment.CenterStart,
+                contentAlignment = Alignment.BottomStart,
             ) {
                 HeroDesktopContentLayers(
                     items = items,
@@ -639,6 +640,7 @@ private fun DesktopHomeHeroFrame(
                 FullscreenActionButton(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .statusBarsPadding()
                         .padding(
                             top = space.s32,
                             end = contentHorizontalPadding,
@@ -1137,7 +1139,7 @@ private fun desktopHeroHeight(
     maxWidthDp: Float,
     viewportHeightDp: Float?,
 ): Dp {
-    val baselineHeight = (maxWidthDp * 0.56f).dp.coerceIn(460.dp, 660.dp)
+    val baselineHeight = (maxWidthDp * 0.56f).dp.coerceIn(460.dp, 640.dp)
     val viewportHeight = viewportHeightDp ?: return baselineHeight
     val ultrawideProgress = ultrawideViewportProgress(
         widthDp = maxWidthDp,

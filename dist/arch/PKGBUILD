@@ -7,11 +7,11 @@
 # The public key lives in nuvio-linux-gpg-key.asc next to this file
 # (pseudonymous packaging key — see AGENTS.md).
 
-_upstream_tag="0.1.27-alpha"
+_upstream_tag="0.1.29-alpha"
 
 pkgname=nuvio-linux
 # Upstream VERSION_NAME with the hyphen stripped (makepkg forbids '-').
-pkgver=0.1.27alpha
+pkgver=0.1.29alpha
 pkgrel=1
 pkgdesc="Nuvio desktop media player — upstream source packaged for Arch Linux"
 arch=('x86_64')
@@ -29,7 +29,7 @@ provides=("${pkgname}")
 conflicts=("${pkgname}")
 options=('!strip')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/NuvioMedia/NuvioDesktop/archive/refs/tags/${_upstream_tag}.tar.gz")
-sha256sums=('c90ee5b8a597f032e7a15eebff3ad557806b99e378a01ec0d4abd29e28e4fbe2')
+sha256sums=('84d0b119a52b3209d7596dc2c77504e3b09c074662322159e91aa6142ca8212d')
 
 # Baseline x86-64 JDK (Temurin 21 LTS, AUR) — set UNCONDITIONALLY: a stale
 # or -march=v3|v4 JAVA_HOME from the environment would otherwise silently
@@ -48,12 +48,10 @@ build() {
   # keys.
   # Overwrite build: Trakt/Simkl IDs extracted from upstream 0.1.21-alpha
   # AppImage (public OAuth IDs, not secrets); TMDB_API_KEY extracted from
-  # upstream 0.1.24-alpha AppImage (new in 0.1.24 — TmdbConfig.kt).
-  # MDBLIST_CLIENT_ID is new in upstream 0.1.26 (MdbListConfig.kt) but
-  # upstream's OWN 0.1.26 AppImage ships it EMPTY (verified: zero-length
-  # UTF-8 constant in MdbListConfig.class) — so we ship it empty too and
-  # stay byte-parity with upstream. Fill it in here if upstream ever
-  # publishes a key.
+  # upstream 0.1.24-alpha AppImage (new in 0.1.24 — TmdbConfig.kt);
+  # MDBLIST_CLIENT_ID extracted from upstream 0.1.29-alpha AppImage (new in
+  # 0.1.26 as an empty MdbListConfig.kt default — upstream's own 0.1.26–0.1.28
+  # binaries shipped it empty — and first populated in 0.1.29).
   cat > local.properties <<EOF
 NUVIO_SUPABASE_URL=https://api.nuvio.tv
 NUVIO_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI
@@ -62,7 +60,7 @@ TRAKT_CLIENT_ID=5783db7c46a5b22f072d4b224f9bd7dc2cbaba66dbe3515d1feb59e3ca72394c
 TRAKT_CLIENT_SECRET=bf6e7561dafee902f5a2a67d2b31feac1563632f331f3958c978aff6389ea384
 SIMKL_CLIENT_ID=dc20e0db975583b15096267cee79cd23b1f56d4bd301ce3c51e4a96a49c834a6
 TMDB_API_KEY=01926d2187b6a5d861eefc750e9df3e3
-MDBLIST_CLIENT_ID=
+MDBLIST_CLIENT_ID=kMMZyv8qithmUSF5102U6HTAPEDqfHtNbn1W4gkz
 EOF
 
   ./gradlew :composeApp:createReleaseDistributable --no-daemon

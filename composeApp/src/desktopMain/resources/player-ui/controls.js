@@ -53,6 +53,8 @@ const openingLogoFillClip = document.getElementById("openingLogoFillClip");
 const openingLogoFill = document.getElementById("openingLogoFill");
 const openingTitle = document.getElementById("openingTitle");
 const openingSpinner = document.getElementById("openingSpinner");
+const openingLoadingIndicator = window.createLoadingIndicator(openingSpinner);
+const bufferingLoadingIndicator = window.createLoadingIndicator(bufferingStatus.querySelector("canvas"));
 const openingStatus = document.getElementById("openingStatus");
 const openingMessage = document.getElementById("openingMessage");
 const openingProgressTrack = document.getElementById("openingProgressTrack");
@@ -366,6 +368,8 @@ let sourceVirtualOffsets = [];
 let sourceVirtualTotalHeight = 0;
 let sourceVirtualSpacer = null;
 let sourceVirtualRenderRaf = 0;
+let appliedRememberedVolume = false;
+let rememberedEpisodeSeason = null;
 let selectedEpisodeSeason = null;
 let episodeStreamFilterId = "";
 let activeSubtitleLanguageKey = "";
@@ -413,6 +417,7 @@ let playerToastTimer = 0;
 let playerToastToken = 0;
 let pendingSettingToastCommand = "";
 let pendingSettingToastToken = 0;
+let timeLabelShowRemaining = false;
 let isPipLocked = false;
 const pipLockButton = document.getElementById("pipLockButton");
 const pipLockOverlay = document.getElementById("pipLockOverlay");
@@ -433,6 +438,9 @@ const syncPipLockLabels = () => {
 };
 const setPipLocked = locked => {
   isPipLocked = locked;
+  if (locked && document.body.style.cursor && document.body.style.cursor.includes("resize")) {
+    document.body.style.cursor = "";
+  }
   root.classList.toggle("pip-locked", locked);
   if (pipLockButton) {
     pipLockButton.setAttribute("aria-pressed", String(locked));
@@ -738,6 +746,11 @@ const applyTheme = () => {
   const gradientColors = Array.isArray(state.themeAccentGradientColors)
     ? state.themeAccentGradientColors.map(color => cssColorOrFallback(color, "")).filter(Boolean)
     : [];
+  const loadingColors = gradientColors.length > 0
+    ? gradientColors
+    : [cssColorOrFallback(state.themeAccentColor, "#2f6fed")];
+  openingLoadingIndicator.setColors(loadingColors);
+  bufferingLoadingIndicator.setColors(loadingColors);
   if (gradientColors.length > 1) {
     style.setProperty("--theme-accent-gradient", `linear-gradient(to right, ${gradientColors.join(", ")})`);
     style.setProperty("--theme-accent-gradient-vertical", `linear-gradient(to bottom, ${gradientColors.join(", ")})`);
@@ -787,9 +800,14 @@ const setProgress = (positionMs, durationMs) => {
   positionLabel.textContent = formatTime(positionMs);
   durationLabel.textContent = formatTime(durationMs);
   if (timeLabel) {
-    timeLabel.textContent = `${formatTime(positionMs)} / ${formatTime(durationMs)}`;
+    durationMs = durationMs - (durationMs % 1000);
+    if (timeLabelShowRemaining) {
+      let remainingTimeMs = durationMs - positionMs + (positionMs % 1000 == 0 ? 0 : 1000);
+      timeLabel.textContent = `-${formatTime(remainingTimeMs)}`;
+    } else {
+      timeLabel.textContent = `${formatTime(positionMs)} / ${formatTime(durationMs)}`;
+    }
   }
-  syncVolumeControl();
 };
 
 const setText = (element, text) => {
@@ -1402,6 +1420,63 @@ const renderSubtitleModal = () => {
   renderSubtitleSelectionRails();
 };
 
+const filterRows = document.querySelectorAll(".filter-row");
+let filterRowPointerId = null;
+let filterRowStartX = null;
+let filterRowStartY = null;
+let filterRowDragging = false;
+
+const resetFilterRowDragHelpers = () => {
+  filterRowPointerId = null;
+  filterRowStartX = null;
+  filterRowStartY = null;
+  filterRowDragging = false;
+};
+
+const releaseFilterRowPointerCaptures = () => {
+  filterRows.forEach(filterRow => {
+    if (filterRow?.hasPointerCapture(filterRowPointerId)) {
+      filterRow.releasePointerCapture(filterRowPointerId);
+      resetFilterRowDragHelpers();
+    }
+  });
+};
+
+filterRows.forEach(filterRow => {
+  const setXYValues = (event) => {
+    filterRowStartX = event.screenX;
+    filterRowStartY = event.screenY;
+  };
+  const prepareDrag = (event) => {
+    resetFilterRowDragHelpers();
+    setXYValues(event);
+  }
+  const shouldDragStart = (event) => {
+    const dx = Math.abs(event.screenX - filterRowStartX);
+    const dy = Math.abs(event.screenY - filterRowStartY);
+    if (dx > 8 || dy > 8) {
+      filterRow.setPointerCapture(event.pointerId);
+      filterRowPointerId = event.pointerId;
+      filterRowDragging = true;
+    }
+  };
+  const clearDrag = (event) => {
+    filterRow.releasePointerCapture(event.pointerId);
+    resetFilterRowDragHelpers();
+  };
+  const drag = (event) => {
+    if (filterRowStartX && !filterRowDragging) shouldDragStart(event);
+    if (filterRow.hasPointerCapture(event.pointerId)) filterRow.scrollLeft -= event.movementX;
+  };
+
+  filterRow.addEventListener("pointerdown", (event) => {
+    if (event.button == 0) prepareDrag(event);
+  });
+  filterRow.addEventListener("pointermove", drag);
+  filterRow.addEventListener("pointerup", clearDrag);
+  filterRow.addEventListener("pointercancel", clearDrag);
+});
+
 const normalizeItems = items =>
   Array.isArray(items) ? items.filter(item => item && typeof item === "object") : [];
 
@@ -1419,7 +1494,10 @@ const appendFilterChip = (container, label, selected, onSelect, isLoading = fals
   chip.appendChild(text);
   chip.addEventListener("click", event => {
     event.stopPropagation();
-    onSelect();
+    if (!selected) {
+      chip.scrollIntoView({ behavior: "smooth", container: "nearest", inline: "start" });
+      onSelect();
+    }
   });
   container.appendChild(chip);
 };
@@ -1684,7 +1762,7 @@ const requestSourceVirtualRender = () => {
   sourceVirtualRenderRaf = window.requestAnimationFrame(renderSourceVirtualRows);
 };
 
-const renderSourceModal = () => {
+const renderSourceModal = (modalOpened = false) => {
   sourcePanelTitle.textContent = state.sourcesPanelTitle || "Sources";
   sourceReloadButton.textContent = state.reloadLabel || "Reload";
   sourceCloseButton.textContent = state.panelCloseLabel || "Close";
@@ -1698,8 +1776,15 @@ const renderSourceModal = () => {
   renderFilterRow(sourceFilterList, filters, sourceFilterId, id => {
     sourceFilterId = id;
     sourceList.scrollTop = 0;
-    renderSourceModal();
+    renderSourceModal(true);
   });
+
+  if (!modalOpened) {
+    window.requestAnimationFrame(() => {
+      sourceFilterList.querySelector(".filter-chip.selected")
+        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+    });
+  }
 
   sourceList.textContent = "";
   sourceList.classList.remove("virtualized");
@@ -1730,7 +1815,7 @@ const renderSourceModal = () => {
   sourceVirtualSpacer.className = "source-virtual-spacer";
   sourceList.appendChild(sourceVirtualSpacer);
   rebuildSourceVirtualLayout();
-  renderSourceVirtualRows();
+  requestSourceVirtualRender();
 };
 
 const appendEpisodeRow = (container, item) => {
@@ -1788,10 +1873,11 @@ const appendEpisodeRow = (container, item) => {
   container.appendChild(row);
 };
 
-const ensureEpisodeSeason = () => {
+const ensureEpisodeSeason = (modalOpened) => {
   const seasons = normalizeItems(state.episodeSeasons);
   if (seasons.length === 0) {
     selectedEpisodeSeason = null;
+    rememberedEpisodeSeason = null;
     return null;
   }
   if (
@@ -1800,15 +1886,16 @@ const ensureEpisodeSeason = () => {
   ) {
     const preferred = seasons.find(season => Boolean(season.isSelected)) || seasons[0];
     selectedEpisodeSeason = Number(preferred.season) || 0;
+    rememberedEpisodeSeason = selectedEpisodeSeason;
   }
-  return selectedEpisodeSeason;
+  return modalOpened ? selectedEpisodeSeason : rememberedEpisodeSeason;
 };
 
-const renderEpisodeList = () => {
+const renderEpisodeList = (modalOpened = false) => {
   episodesPanelTitle.textContent = state.episodesPanelTitle || "Episodes";
   episodesCloseButton.textContent = state.panelCloseLabel || "Close";
 
-  const selectedSeason = ensureEpisodeSeason();
+  const selectedSeason = ensureEpisodeSeason(modalOpened);
   const seasons = normalizeItems(state.episodeSeasons);
   renderFilterRow(
     seasonFilterList,
@@ -1816,9 +1903,16 @@ const renderEpisodeList = () => {
     selectedSeason == null ? "" : String(selectedSeason),
     id => {
       selectedEpisodeSeason = Number(id);
-      renderEpisodeList();
+      renderEpisodeList(true);
     },
   );
+
+  if (!modalOpened) {
+    window.requestAnimationFrame(() => {
+      seasonFilterList.querySelector(".filter-chip.selected")
+        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+    });
+  }
 
   episodeList.textContent = "";
   let items = normalizeItems(state.episodeItems);
@@ -1830,9 +1924,18 @@ const renderEpisodeList = () => {
     return;
   }
   items.forEach(item => appendEpisodeRow(episodeList, item));
+
+  window.requestAnimationFrame(() => {
+    const selectedEpisode = episodeList.querySelector(".track-row.episode-row.selected");
+    if (selectedEpisode) {
+      selectedEpisode.scrollIntoView({ behavior: "instant", container: "nearest", block: "start" });
+    } else {
+      episodeList.scrollTop = 0;
+    }
+  });
 };
 
-const renderEpisodeStreams = () => {
+const renderEpisodeStreams = (modalOpened = false) => {
   streamsPanelTitle.textContent = state.streamsPanelTitle || "Streams";
   episodeBackButton.textContent = state.backLabel || "Back";
   episodeReloadButton.textContent = state.reloadLabel || "Reload";
@@ -1846,8 +1949,16 @@ const renderEpisodeStreams = () => {
   }
   renderFilterRow(episodeStreamFilterList, filters, episodeStreamFilterId, id => {
     episodeStreamFilterId = id;
-    renderEpisodeStreams();
+    episodeStreamList.scrollTop = 0;
+    renderEpisodeStreams(true);
   });
+
+  if (!modalOpened) {
+    window.requestAnimationFrame(() => {
+      episodeStreamFilterList.querySelector(".filter-chip.selected")
+        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+    });
+  }
 
   episodeStreamList.textContent = "";
   let items = normalizeItems(state.episodeStreamItems);
@@ -1932,9 +2043,18 @@ const renderActiveModal = () => {
 window.nuvioNativeViewportChanged = () => {
   root.classList.add("native-resizing");
   window.clearTimeout(nativeViewportTimer);
+  const timeoutMs = state.isInPip ? 5000 : 180;
   nativeViewportTimer = window.setTimeout(() => {
     root.classList.remove("native-resizing");
-  }, 180);
+  }, timeoutMs);
+  syncSkipPromptPlacement(skipPrompt.classList.contains("visible"));
+  if (activeModal) renderActiveModal();
+};
+
+window.nuvioNativeResizeEnded = () => {
+  window.clearTimeout(nativeViewportTimer);
+  root.classList.remove("native-resizing");
+  noteChromeActivity(true);
   syncSkipPromptPlacement(skipPrompt.classList.contains("visible"));
   if (activeModal) renderActiveModal();
 };
@@ -1978,6 +2098,7 @@ const renderOpeningOverlay = suppress => {
   openingTitle.textContent = titleText;
   openingTitle.hidden = Boolean(logoUrl || !titleText);
   openingSpinner.hidden = Boolean(logoUrl || titleText);
+  openingLoadingIndicator.setActive(showOpening && !openingSpinner.hidden);
 
   openingMessage.textContent = messageText;
   openingStatus.hidden = !(messageText || showHorizontalProgress);
@@ -2282,6 +2403,7 @@ const renderChrome = () => {
   const showBuffering = Boolean(!showError && state.isLoading && !activeModal && !showOpening);
   bufferingStatus.classList.toggle("visible", showBuffering);
   bufferingStatus.setAttribute("aria-hidden", showBuffering ? "false" : "true");
+  bufferingLoadingIndicator.setActive(showBuffering);
 
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
@@ -2632,6 +2754,7 @@ window.addEventListener("blur", () => {
   clearPressedButton();
   syncChromeAutoHideTimer(isOpeningOverlayActive());
   clearSpeedBoostTimers();
+  releaseFilterRowPointerCaptures();
   if (isHoldSpeedActive || isSpaceBoosting || isSpeedBoosting) {
     suppressNextRootClick = true;
     stopSpeedBoost();
@@ -2975,6 +3098,12 @@ volumeButton.addEventListener("click", () => {
   send("volumeChangeTemporary", state.volumeLevel);
 });
 
+timeLabel.addEventListener("click", () => {
+  noteChromeActivity();
+  timeLabelShowRemaining = !timeLabelShowRemaining;
+  renderChrome();
+});
+
 window.playerUpdate = update => {
   const durationMs = Math.round((Number(update.duration) || 0) * 1000);
   const positionMs = Math.round((Number(update.position) || 0) * 1000);
@@ -3003,6 +3132,10 @@ window.playerUpdate = update => {
     audioTracks,
     subtitleTracks,
   };
+  if (!appliedRememberedVolume) {
+    appliedRememberedVolume = true;
+    syncVolumeControl();
+  }
   if (typeof volumeLevel === "number" && volumeLevel > 0) {
     preMuteVolumeLevel = volumeLevel;
   }
@@ -3126,8 +3259,45 @@ let isSpeedBoosting = false;
 let speedBoostHoldTimer = null;
 let isHoldSpeedActive = false;
 let suppressNextRootClick = false;
+let suppressClickTimer = null;
+
+const setSuppressNextRootClick = () => {
+  suppressNextRootClick = true;
+  if (suppressClickTimer) {
+    window.clearTimeout(suppressClickTimer);
+  }
+  suppressClickTimer = window.setTimeout(() => {
+    suppressNextRootClick = false;
+    suppressClickTimer = null;
+  }, 250);
+};
+
+const clearSuppressNextRootClick = () => {
+  suppressNextRootClick = false;
+  if (suppressClickTimer) {
+    window.clearTimeout(suppressClickTimer);
+    suppressClickTimer = null;
+  }
+};
+
+window.nuvioNativeViewportChanged = () => {
+  root.classList.add("native-resizing");
+};
+
+window.nuvioNativeResizeEnded = () => {
+  pipPointerDown = false;
+  clearSuppressNextRootClick();
+  root.classList.remove("native-resizing");
+  if (document.body.style.cursor && document.body.style.cursor.includes("resize")) {
+    document.body.style.cursor = "";
+  }
+};
+
 let rootPointerStartX = 0;
 let rootPointerStartY = 0;
+let pipPointerStartX = 0;
+let pipPointerStartY = 0;
+let pipPointerDown = false;
 let spaceHoldTimer = null;
 let isSpaceBoosting = false;
 let pausedBeforeSpeedBoosting = false;
@@ -3222,29 +3392,89 @@ root.addEventListener("pointerdown", event => {
   }, 220);
 });
 
+const PIP_RESIZE_BORDER = 8;
+
+const getPipEdgeHit = (clientX, clientY) => {
+  if (!state.isInPip || isPipLocked) return null;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w <= 0 || h <= 0) return null;
+  const left = clientX < PIP_RESIZE_BORDER;
+  const right = clientX >= w - PIP_RESIZE_BORDER;
+  const top = clientY < PIP_RESIZE_BORDER;
+  const bottom = clientY >= h - PIP_RESIZE_BORDER;
+
+  if (top && left) return { hit: 13, cursor: "nwse-resize" };
+  if (top && right) return { hit: 14, cursor: "nesw-resize" };
+  if (bottom && left) return { hit: 16, cursor: "nesw-resize" };
+  if (bottom && right) return { hit: 17, cursor: "nwse-resize" };
+  if (left) return { hit: 10, cursor: "ew-resize" };
+  if (right) return { hit: 11, cursor: "ew-resize" };
+  if (top) return { hit: 12, cursor: "ns-resize" };
+  if (bottom) return { hit: 15, cursor: "ns-resize" };
+  return null;
+};
+
 window.addEventListener("pointermove", event => {
   if (speedBoostHoldTimer && !isHoldSpeedActive) {
     const dx = Math.abs(event.clientX - rootPointerStartX);
     const dy = Math.abs(event.clientY - rootPointerStartY);
     if (dx > 12 || dy > 12) clearSpeedBoostHoldTimer();
   }
+  if (state.isInPip && !isPipLocked) {
+    if (event.target && event.target.closest && event.target.closest("button, input, select, textarea, [data-command], a, #seek, .volume-control, .pip-lock-badge, .modal")) {
+      if (document.body.style.cursor && document.body.style.cursor.includes("resize")) {
+        document.body.style.cursor = "";
+      }
+    } else {
+      const edge = getPipEdgeHit(event.clientX, event.clientY);
+      if (edge) {
+        document.body.style.cursor = edge.cursor;
+      } else if (document.body.style.cursor && document.body.style.cursor.includes("resize")) {
+        document.body.style.cursor = "";
+      }
+    }
+  }
+  if (pipPointerDown && state.isInPip) {
+    const dx = Math.abs(event.clientX - pipPointerStartX);
+    const dy = Math.abs(event.clientY - pipPointerStartY);
+    if (dx > 6 || dy > 6) {
+      pipPointerDown = false;
+      setSuppressNextRootClick();
+      if (event.target && event.target.releasePointerCapture) {
+        try { event.target.releasePointerCapture(event.pointerId); } catch (_) {}
+      }
+      send("dragWindow", 0);
+    }
+  }
 });
 
 window.addEventListener("pointerup", () => {
+  pipPointerDown = false;
   clearSpeedBoostHoldTimer();
   preventClickAndStopSpeedBoost();
 });
 
 window.addEventListener("pointercancel", () => {
+  pipPointerDown = false;
+  clearSuppressNextRootClick();
   clearSpeedBoostHoldTimer();
   preventClickAndStopSpeedBoost();
+});
+
+window.addEventListener("blur", () => {
+  pipPointerDown = false;
+  clearSuppressNextRootClick();
+  if (document.body.style.cursor && document.body.style.cursor.includes("resize")) {
+    document.body.style.cursor = "";
+  }
 });
 
 root.addEventListener("click", event => {
   if (event.button !== 0) return;
   if (isPipLocked) return;
   if (suppressNextRootClick) {
-    suppressNextRootClick = false;
+    clearSuppressNextRootClick();
     window.clearTimeout(tapTimer);
     event.stopPropagation();
     event.preventDefault();
@@ -3259,12 +3489,29 @@ root.addEventListener("click", event => {
 
 root.addEventListener("pointerdown", event => {
   if (!state.isInPip || event.button !== 0) return;
-  if (event.target.closest("button, input, select, textarea, [data-command], a, #seek, .volume-control, .pip-lock-badge")) return;
-  event.preventDefault();
-  if (event.target && event.target.releasePointerCapture) {
-    try { event.target.releasePointerCapture(event.pointerId); } catch (_) {}
+  if (activeModal) return;
+
+  if (event.target.closest("button, input, select, textarea, [data-command], a, #seek, .volume-control, .pip-lock-badge, .modal")) return;
+
+  if (!isPipLocked) {
+    const edge = getPipEdgeHit(event.clientX, event.clientY);
+    if (edge) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSuppressNextRootClick();
+      pipPointerDown = false;
+      root.classList.add("native-resizing");
+      if (event.target && event.target.releasePointerCapture) {
+        try { event.target.releasePointerCapture(event.pointerId); } catch (_) {}
+      }
+      send("resizeWindow", edge.hit);
+      return;
+    }
   }
-  send("dragWindow", 0);
+
+  pipPointerStartX = event.clientX;
+  pipPointerStartY = event.clientY;
+  pipPointerDown = true;
 });
 
 if (pipLockButton) {

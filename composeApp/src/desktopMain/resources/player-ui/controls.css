@@ -874,12 +874,18 @@ button:disabled {
 }
 
 /* PiP keeps only playback, captions/audio, volume, restore action, and pause overlay. */
+.player.pip-mode {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+
 .player.pip-mode .header-button:not(#pipButton):not(#pipLockButton),
 .player.pip-mode .metadata,
 .player.pip-mode [data-command="resize"],
 .player.pip-mode [data-command="speed"],
 .player.pip-mode [data-command="sources"],
 .player.pip-mode [data-command="episodes"],
+.player.pip-mode [data-command="playNextEpisode"],
 .player.pip-mode .next-episode-card,
 .player.pip-mode .skip-prompt,
 .player.pip-mode .parental-guide,
@@ -965,6 +971,17 @@ button:disabled {
 .player.pip-locked .content,
 .player.pip-locked .top-gradient,
 .player.pip-locked .bottom-gradient {
+  display: none !important;
+}
+
+/* When PiP is being resized, hide all overlay chrome, gradients, and modals with zero latency */
+.player.pip-mode.native-resizing .content,
+.player.pip-mode.native-resizing .top-gradient,
+.player.pip-mode.native-resizing .bottom-gradient,
+.player.pip-mode.native-resizing .pause-metadata-overlay,
+.player.pip-mode.native-resizing .opening-overlay,
+.player.pip-mode.native-resizing .pip-lock-overlay,
+.player.pip-mode.native-resizing .pip-lock-badge {
   display: none !important;
 }
 
@@ -1072,12 +1089,8 @@ button:disabled {
 }
 
 .center-spinner {
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  border: 3px solid var(--theme-buffering-track);
-  border-top-color: var(--theme-buffering);
-  animation: center-spin 760ms linear infinite;
+  width: var(--play-icon);
+  height: var(--play-icon);
 }
 
 .playback-error {
@@ -1463,10 +1476,6 @@ button:disabled {
 .opening-spinner {
   width: 54px;
   height: 54px;
-  border-radius: 999px;
-  border: 3px solid var(--theme-buffering-track);
-  border-top-color: var(--theme-buffering);
-  animation: center-spin 760ms linear infinite;
 }
 
 .opening-status {
@@ -1510,12 +1519,6 @@ button:disabled {
 @keyframes opening-logo-pulse {
   to {
     transform: scale(1.04);
-  }
-}
-
-@keyframes center-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 
@@ -2162,6 +2165,7 @@ button:disabled {
   padding: 4px 8px;
   flex: 0 0 auto;
   scrollbar-width: none;
+  scroll-padding-left: 6px;
 }
 
 .filter-row::-webkit-scrollbar {

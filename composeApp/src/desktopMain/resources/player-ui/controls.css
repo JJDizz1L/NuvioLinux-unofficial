@@ -485,6 +485,36 @@ button:disabled {
   font-style: italic;
 }
 
+.player-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(760px, 100%);
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.player-badge {
+  flex: none;
+  box-sizing: border-box;
+  height: 17px;
+  padding: 2px 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.player-badge img {
+  display: block;
+  height: 13px;
+  min-width: 28px;
+  max-width: 78px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
 .parental-guide {
   position: absolute;
   top: calc(var(--slider-bottom) + env(safe-area-inset-top));

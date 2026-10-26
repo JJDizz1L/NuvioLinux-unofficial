@@ -33,6 +33,7 @@ const episode = document.getElementById("episode");
 const playbackMetadata = document.querySelector(".metadata");
 const streamTitle = document.getElementById("streamTitle");
 const providerName = document.getElementById("providerName");
+const playerBadges = document.getElementById("playerBadges");
 const resizeLabel = document.getElementById("resizeLabel");
 const speedLabel = document.getElementById("speedLabel");
 const subtitlesLabel = document.getElementById("subtitlesLabel");
@@ -825,6 +826,31 @@ const setText = (element, text) => {
   element.hidden = !text;
 };
 
+let playerBadgesSignature = "";
+
+const renderPlayerBadges = () => {
+  const badges = Array.isArray(state.badges) ? state.badges : [];
+  const signature = JSON.stringify(badges);
+  if (signature === playerBadgesSignature) return;
+  playerBadgesSignature = signature;
+  playerBadges.textContent = "";
+  badges.forEach((badge) => {
+    const chip = document.createElement("span");
+    chip.className = "player-badge";
+    if (String(badge.tagStyle || "").toLowerCase() === "filled" && badge.tagColor) chip.style.background = badge.tagColor;
+    if (badge.borderColor) chip.style.borderColor = badge.borderColor;
+    const image = document.createElement("img");
+    image.alt = badge.name || "";
+    image.draggable = false;
+    image.addEventListener("error", () => chip.remove());
+    image.addEventListener("load", () => { playerBadges.hidden = !playerBadges.childElementCount; });
+    image.src = badge.imageUrl;
+    chip.appendChild(image);
+    playerBadges.appendChild(chip);
+  });
+  playerBadges.hidden = badges.length === 0;
+};
+
 const setVisible = (element, visible) => {
   element.hidden = !visible;
 };
@@ -1017,6 +1043,7 @@ const openPlayerModal = modal => {
     return;
   }
   if (activeModal === "party" && modal !== "party") onPartyModalClosed();
+  if (modal === "party" && activeModal !== "party") onPartyModalOpened();
   activeModal = modal;
   if (modal === "submitIntro") {
     const contentKey = state.submitIntroContentKey || "";
@@ -2424,6 +2451,7 @@ const renderChrome = () => {
   setText(episode, state.episodeText);
   setText(streamTitle, state.streamTitle);
   setText(providerName, state.providerName);
+  renderPlayerBadges();
   resizeLabel.textContent = state.resizeModeLabel || "Fit";
   speedLabel.textContent = state.playbackSpeedLabel || "1x";
   subtitlesLabel.textContent = state.subtitlesLabel || "Subs";

@@ -37,11 +37,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
@@ -53,7 +48,8 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
-import com.nuvio.app.core.ui.PlatformBackDispatcher
+import androidx.navigationevent.DirectNavigationEventInput
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.nuvio.app.core.ui.LocalPosterClickAnchor
 import com.nuvio.app.navigation.PosterNavigationState
 import com.nuvio.app.navigation.posterNavigationEntry
@@ -117,6 +113,7 @@ import com.nuvio.app.features.home.components.shouldBlurContinueWatchingArtwork
 import com.nuvio.app.features.library.LibraryItem
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.library.LibrarySection
+import com.nuvio.app.features.library.rememberLibrarySectionTitleResolver
 import com.nuvio.app.features.library.LibrarySortOption
 import com.nuvio.app.features.library.LibrarySourceMode
 import com.nuvio.app.features.library.PendingTrackingMembershipRemoval
@@ -1165,10 +1162,13 @@ internal fun MainAppContent(
                                     LibrarySourceMode.MDBLIST -> stringResource(Res.string.library_mdblist_title)
         }
 
+        val resolveLibrarySectionTitle = rememberLibrarySectionTitleResolver()
+
         val onLibrarySectionViewAllClick: (LibrarySection, LibrarySortOption) -> Unit = { section, sortOption ->
+            val sectionTitle = resolveLibrarySectionTitle(section.type, section.displayTitle)
             val launchId = CatalogLaunchStore.put(
                 CatalogLaunch(
-                    title = section.displayTitle,
+                    title = sectionTitle,
                     subtitle = librarySectionSubtitle,
                     target = CatalogTarget.Library(
                         contentType = section.items.firstOrNull()?.type ?: "movie",
@@ -1180,7 +1180,7 @@ internal fun MainAppContent(
             navController.navigate(
                 CatalogRoute(
                     launchId = launchId,
-                    title = section.displayTitle,
+                    title = sectionTitle,
                     subtitle = librarySectionSubtitle,
                 ),
             )
@@ -1298,6 +1298,17 @@ internal fun MainAppContent(
             selectedContinueWatchingForActions = item
         }
 
+        // Desktop has no system back, so mouse Back joins Esc in Compose's window back
+        // dispatcher; open dialogs then take it before screen-level handlers.
+        val mouseBackInput = remember { DirectNavigationEventInput() }
+        if (isDesktop) {
+            val navigationEventDispatcher = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
+            DisposableEffect(navigationEventDispatcher) {
+                navigationEventDispatcher?.addInput(mouseBackInput)
+                onDispose { navigationEventDispatcher?.removeInput(mouseBackInput) }
+            }
+        }
+
         AppUpdaterHost(
             controller = appUpdaterController,
             modifier = Modifier.fillMaxSize(),
@@ -1306,16 +1317,6 @@ internal fun MainAppContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.nuvio.colors.background)
-                    .onKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                            if (!PlatformBackDispatcher.dispatch()) {
-                                navController.popBackStack()
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    }
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
@@ -1324,7 +1325,9 @@ internal fun MainAppContent(
                                     if (!event.changes.any { it.isConsumed }) {
                                         if (event.button == PointerButton.Back) {
                                             event.changes.forEach { it.consume() }
-                                            if (!PlatformBackDispatcher.dispatch()) {
+                                            if (isDesktop) {
+                                                mouseBackInput.backCompleted()
+                                            } else {
                                                 navController.popBackStack()
                                             }
                                         }

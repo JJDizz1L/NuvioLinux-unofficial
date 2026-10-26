@@ -12,7 +12,30 @@ const partyConfirmTitle = document.getElementById("partyConfirmTitle");
 const partyConfirmMessage = document.getElementById("partyConfirmMessage");
 const partyConfirmCancel = document.getElementById("partyConfirmCancel");
 const partyConfirmAccept = document.getElementById("partyConfirmAccept");
+const partyPillBadge = document.getElementById("partyPillBadge");
+const partyTabs = document.getElementById("partyTabs");
+const partyTabIndicator = document.getElementById("partyTabIndicator");
+const partyTabParty = document.getElementById("partyTabParty");
+const partyTabChat = document.getElementById("partyTabChat");
+const partyTabBadge = document.getElementById("partyTabBadge");
+const partyChatBox = document.getElementById("partyChat");
+const partyChatViewport = document.getElementById("partyChatViewport");
+const partyChatScroll = document.getElementById("partyChatScroll");
+const partyChatList = document.getElementById("partyChatList");
+const partyChatEmpty = document.getElementById("partyChatEmpty");
+const partyChatEmptyTitle = document.getElementById("partyChatEmptyTitle");
+const partyChatEmptyMessage = document.getElementById("partyChatEmptyMessage");
+const partyChatNew = document.getElementById("partyChatNew");
+const partyChatNewLabel = document.getElementById("partyChatNewLabel");
+const partyChatInput = document.getElementById("partyChatInput");
+const partyChatSend = document.getElementById("partyChatSend");
 const partyCodeLength = 6;
+const partyChatAvatarSize = 28;
+const partyChatMaxLength = 500;
+const partyChatMaxInputHeight = 102;
+const partyChatCompactHeight = 150;
+const partyChatBottomSlack = 24;
+const partyChatScrollMs = 300;
 const partyCopiedDurationMs = 1800;
 const partyMessageDurationMs = 2500;
 const partySwitchSettleMs = 1500;
@@ -23,6 +46,15 @@ let partyKnownMemberIds = null;
 let partyCopiedUntil = 0;
 let partyCopiedTimer = 0;
 let partyConfirmHandler = null;
+let partyTab = "party";
+let partyChatSentVisible = false;
+let partyChatReady = false;
+let partyChatNewestKey = "";
+let partyChatNewBelow = false;
+let partyChatScrollFrame = 0;
+let partyChatSignature = "";
+let partyChatComposerFrame = 0;
+const partyChatRows = new Map();
 
 const currentParty = () => (state.party && typeof state.party === "object" ? state.party : {});
 
@@ -33,6 +65,13 @@ const partyLabel = (key, fallback = "") => {
 };
 
 const partyMembers = () => normalizeItems(currentParty().members);
+
+const currentPartyChat = () => {
+  const chat = currentParty().chat;
+  return chat && typeof chat === "object" ? chat : {};
+};
+
+const partyUnreadCount = () => (currentParty().active ? Math.max(0, Number(currentPartyChat().unread) || 0) : 0);
 
 const partyElement = (tag, className = "", text = null) => {
   const element = document.createElement(tag);
@@ -129,6 +168,27 @@ const buildPartyStack = (container, members, size) => {
   }
 };
 
+const updatePartyBadge = (badge, count) => {
+  const label = badge.querySelector(".party-unread-count");
+  window.clearTimeout(badge.hideTimer);
+  if (count > 0) {
+    label.textContent = count > 9 ? "9+" : String(count);
+    if (badge.hidden || badge.classList.contains("leaving")) {
+      badge.hidden = false;
+      badge.classList.remove("leaving", "entering");
+      void badge.offsetWidth;
+      badge.classList.add("entering");
+    }
+    return;
+  }
+  if (badge.hidden || badge.classList.contains("leaving")) return;
+  badge.classList.add("leaving");
+  badge.hideTimer = window.setTimeout(() => {
+    badge.hidden = true;
+    badge.classList.remove("leaving", "entering");
+  }, 160);
+};
+
 const renderPartyChrome = () => {
   const party = currentParty();
   const title = partyLabel("title", "Watch party");
@@ -151,6 +211,8 @@ const renderPartyChrome = () => {
   partyPill.setAttribute("aria-hidden", visible ? "false" : "true");
   partyPill.tabIndex = visible ? 0 : -1;
   partyPill.setAttribute("aria-label", message || title);
+
+  updatePartyBadge(partyPillBadge, partyUnreadCount());
 
   const stackKey = members.map(member => [member.id, member.initial, member.imageUrl, member.color].join(":")).join("|");
   if (stackKey !== partyPillKey) {
@@ -400,8 +462,247 @@ const buildPartyContent = party => {
   return content;
 };
 
+const partyEncodeText = text => {
+  let binary = "";
+  new TextEncoder().encode(text).forEach(byte => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const syncPartyChatVisible = () => {
+  const wanted = activeModal === "party" && Boolean(currentParty().active) && partyTab === "chat" && !state.isInPip;
+  if (wanted === partyChatSentVisible) return;
+  partyChatSentVisible = wanted;
+  send("partyChatVisible", wanted ? 1 : 0);
+};
+
+const partyChatDistanceFromBottom = () =>
+  partyChatScroll.scrollHeight - partyChatScroll.scrollTop - partyChatScroll.clientHeight;
+
+const isPartyChatAtBottom = () => partyChatDistanceFromBottom() <= partyChatBottomSlack;
+
+const updatePartyChatNewButton = () => {
+  const visible = partyChatNewBelow && !isPartyChatAtBottom();
+  if (visible === !partyChatNew.hidden) return;
+  if (visible) {
+    partyChatNew.hidden = false;
+    partyChatNew.classList.remove("leaving");
+    void partyChatNew.offsetWidth;
+    partyChatNew.classList.add("entering");
+    return;
+  }
+  partyChatNew.classList.remove("entering");
+  partyChatNew.classList.add("leaving");
+  window.setTimeout(() => {
+    if (!partyChatNewBelow || isPartyChatAtBottom()) {
+      partyChatNew.hidden = true;
+      partyChatNew.classList.remove("leaving");
+    }
+  }, 160);
+};
+
+const scrollPartyChatToBottom = smooth => {
+  window.cancelAnimationFrame(partyChatScrollFrame);
+  const target = () => partyChatScroll.scrollHeight - partyChatScroll.clientHeight;
+  if (!smooth || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    partyChatScroll.scrollTop = target();
+    return;
+  }
+  const from = partyChatScroll.scrollTop;
+  const start = performance.now();
+  const step = now => {
+    const progress = Math.min(1, (now - start) / partyChatScrollMs);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    partyChatScroll.scrollTop = from + (target() - from) * eased;
+    if (progress < 1) partyChatScrollFrame = window.requestAnimationFrame(step);
+  };
+  partyChatScrollFrame = window.requestAnimationFrame(step);
+};
+
+const resetPartyChatList = () => {
+  partyChatRows.clear();
+  partyChatList.textContent = "";
+  partyChatReady = false;
+  partyChatSignature = "";
+  partyChatNewestKey = "";
+  partyChatNewBelow = false;
+  partyChatNew.hidden = true;
+  partyChatNew.classList.remove("entering", "leaving");
+  partyChatEmpty.hidden = true;
+};
+
+const buildPartyChatRow = () => {
+  const el = partyElement("div", "party-chat-row");
+  const time = partyElement("div", "party-chat-time");
+  const name = partyElement("div", "party-chat-name");
+  const line = partyElement("div", "party-chat-line");
+  const avatar = partyElement("span", "party-chat-avatar");
+  const bubble = partyElement("div", "party-chat-bubble");
+  line.appendChild(avatar);
+  line.appendChild(bubble);
+  const row = { el, time, name, avatar, bubble, key: "", avatarKey: "" };
+  const failed = partyAction(partyElement("button", "party-chat-failed"), "chatRetry", () => send(`partyChatRetry:${row.key}`, 0));
+  row.failed = failed;
+  el.appendChild(time);
+  el.appendChild(name);
+  el.appendChild(line);
+  el.appendChild(failed);
+  return row;
+};
+
+const updatePartyChatRow = (row, message) => {
+  const mine = Boolean(message.mine);
+  row.key = String(message.key || "");
+  row.el.classList.toggle("mine", mine);
+  row.el.classList.toggle("starts-group", Boolean(message.startsGroup));
+  row.el.classList.toggle("ends-group", Boolean(message.endsGroup));
+  row.time.hidden = !message.showTime;
+  row.time.textContent = message.time || "";
+  const showName = Boolean(message.startsGroup) && !mine;
+  row.name.hidden = !showName;
+  row.name.textContent = showName ? message.name || "" : "";
+  row.avatar.hidden = mine;
+  const avatarKey = [message.endsGroup ? 1 : 0, message.initial, message.imageUrl, message.color].join("|");
+  if (avatarKey !== row.avatarKey) {
+    row.avatarKey = avatarKey;
+    row.avatar.textContent = "";
+    if (message.endsGroup) row.avatar.appendChild(buildPartyAvatar(message, partyChatAvatarSize));
+  }
+  row.bubble.textContent = message.body || "";
+  row.bubble.classList.toggle("pending", !message.sent);
+  row.failed.hidden = !message.failed;
+  row.failed.textContent = message.failed ? partyLabel("chatNotSent") : "";
+};
+
+const syncPartyChatRows = messages => {
+  const firstRender = !partyChatReady;
+  const wasAtBottom = firstRender || isPartyChatAtBottom();
+  const tops = new Map();
+  partyChatRows.forEach((row, key) => tops.set(key, row.el.getBoundingClientRect().top));
+  const seen = new Set();
+  messages.forEach((message, index) => {
+    const key = String(message.key || "");
+    let row = partyChatRows.get(key);
+    const created = !row;
+    if (created) {
+      row = buildPartyChatRow();
+      partyChatRows.set(key, row);
+    }
+    updatePartyChatRow(row, message);
+    seen.add(key);
+    const expected = partyChatList.children[index] || null;
+    if (expected !== row.el) partyChatList.insertBefore(row.el, expected);
+    if (created && !firstRender) {
+      row.el.classList.add("entering");
+      row.el.addEventListener("animationend", () => row.el.classList.remove("entering"), { once: true });
+    }
+  });
+  Array.from(partyChatRows.keys()).forEach(key => {
+    if (seen.has(key)) return;
+    partyChatRows.get(key).el.remove();
+    partyChatRows.delete(key);
+  });
+
+  if (!firstRender && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    partyChatRows.forEach((row, key) => {
+      const top = tops.get(key);
+      if (top === undefined) return;
+      const delta = top - row.el.getBoundingClientRect().top;
+      if (Math.abs(delta) < 1) return;
+      row.el.animate(
+        [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
+        { duration: 300, easing: "cubic-bezier(.2, .8, .2, 1)" },
+      );
+    });
+  }
+
+  const newest = messages[messages.length - 1];
+  const newestKey = newest ? String(newest.key || "") : "";
+  if (firstRender) {
+    scrollPartyChatToBottom(false);
+  } else if (newest && newestKey !== partyChatNewestKey) {
+    if (newest.mine || wasAtBottom) scrollPartyChatToBottom(true);
+    else partyChatNewBelow = true;
+  }
+  partyChatNewestKey = newestKey;
+  partyChatReady = true;
+  updatePartyChatNewButton();
+};
+
+const updatePartyChatComposer = () => {
+  partyChatInput.style.height = "auto";
+  partyChatInput.style.height = `${Math.min(partyChatInput.scrollHeight, partyChatMaxInputHeight)}px`;
+  partyChatSend.disabled = !partyChatInput.value.trim();
+};
+
+const sendPartyChatMessage = () => {
+  const text = partyChatInput.value.trim().slice(0, partyChatMaxLength);
+  if (!text) return;
+  send(`partyChatSend:${partyEncodeText(text)}`, 0);
+  partyChatInput.value = "";
+  updatePartyChatComposer();
+  partyChatInput.focus({ preventScroll: true });
+};
+
+const renderPartyChat = visible => {
+  partyChatInput.placeholder = partyLabel("chatPlaceholder", "Message");
+  partyChatSend.setAttribute("aria-label", partyLabel("chatSend", "Send"));
+  partyChatSend.title = partyLabel("chatSend", "Send");
+  partyChatNewLabel.textContent = partyLabel("chatNewMessages", "New messages");
+  partyChatEmptyTitle.textContent = partyLabel("chatEmptyTitle");
+  partyChatEmptyMessage.textContent = partyLabel("chatEmptyMessage");
+  const chat = currentPartyChat();
+  if (!visible || !chat.ready) {
+    if (partyChatReady) resetPartyChatList();
+    return;
+  }
+  const messages = normalizeItems(chat.messages);
+  const signature = messages
+    .map(message => [message.key, message.sent, message.failed, message.startsGroup, message.endsGroup, message.time, message.name, message.initial, message.imageUrl, message.color, message.body].join("\u0001"))
+    .join("\u0002");
+  if (signature === partyChatSignature && partyChatReady) return;
+  partyChatSignature = signature;
+  const firstRender = !partyChatReady;
+  syncPartyChatRows(messages);
+  partyChatEmpty.hidden = messages.length > 0;
+  partyChatEmpty.classList.toggle("compact", partyChatViewport.clientHeight < partyChatCompactHeight);
+  if (firstRender) updatePartyChatComposer();
+};
+
+const renderPartyTabs = () => {
+  const active = Boolean(currentParty().active);
+  partyTabs.hidden = !active;
+  if (!active) {
+    partyTab = "party";
+    updatePartyBadge(partyTabBadge, 0);
+    return;
+  }
+  const chat = partyTab === "chat";
+  partyTabParty.firstElementChild.textContent = partyLabel("tabParty", "Party");
+  partyTabChat.firstElementChild.textContent = partyLabel("tabChat", "Chat");
+  partyTabParty.classList.toggle("selected", !chat);
+  partyTabChat.classList.toggle("selected", chat);
+  partyTabParty.setAttribute("aria-selected", String(!chat));
+  partyTabChat.setAttribute("aria-selected", String(chat));
+  partyTabIndicator.classList.toggle("chat", chat);
+  updatePartyBadge(partyTabBadge, partyUnreadCount());
+};
+
+const setPartyTab = tab => {
+  if (partyTab === tab) return;
+  partyTab = tab;
+  if (activeModal === "party") renderPartyModal();
+  if (tab === "chat") partyChatInput.focus({ preventScroll: true });
+};
+
+const onPartyModalOpened = () => {
+  if (partyUnreadCount() > 0) partyTab = "chat";
+};
+
 const partyPanelSignature = party => JSON.stringify({
   ...party,
+  chat: null,
   pillMessage: "",
   pillPinned: false,
   message: "",
@@ -414,6 +715,12 @@ const renderPartyModal = () => {
   partyPanelTitle.textContent = partyLabel("title", "Watch party");
   partyCloseButton.textContent = partyLabel("close", "Close");
   const party = currentParty();
+  renderPartyTabs();
+  const chatTab = Boolean(party.active) && partyTab === "chat";
+  partyBody.hidden = chatTab;
+  partyChatBox.hidden = !chatTab;
+  renderPartyChat(chatTab);
+  syncPartyChatVisible();
   const key = partyPanelSignature(party);
   if (key === partyPanelKey) return;
   partyPanelKey = key;
@@ -432,6 +739,11 @@ const renderPartyModal = () => {
 };
 
 const onPartyModalClosed = () => {
+  if (partyChatSentVisible) {
+    partyChatSentVisible = false;
+    send("partyChatVisible", 0);
+  }
+  resetPartyChatList();
   closePartyConfirm();
   partyPanelKey = "";
   partyKnownMemberIds = null;
@@ -449,6 +761,59 @@ const applyPartyControls = previous => {
   }
   if (!party.active && before.active) closePartyConfirm();
 };
+
+partyTabParty.addEventListener("click", event => {
+  event.stopPropagation();
+  setPartyTab("party");
+});
+
+partyTabChat.addEventListener("click", event => {
+  event.stopPropagation();
+  setPartyTab("chat");
+});
+
+partyChatInput.addEventListener("input", () => {
+  partyChatSend.disabled = !partyChatInput.value.trim();
+  if (partyChatComposerFrame) return;
+  partyChatComposerFrame = window.requestAnimationFrame(() => {
+    partyChatComposerFrame = 0;
+    updatePartyChatComposer();
+  });
+});
+
+partyChatInput.addEventListener("keydown", event => {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  sendPartyChatMessage();
+});
+
+partyChatSend.addEventListener("click", event => {
+  event.stopPropagation();
+  sendPartyChatMessage();
+});
+
+partyChatNew.addEventListener("click", event => {
+  event.stopPropagation();
+  partyChatNewBelow = false;
+  updatePartyChatNewButton();
+  scrollPartyChatToBottom(true);
+});
+
+partyChatScroll.addEventListener("scroll", () => {
+  if (isPartyChatAtBottom()) partyChatNewBelow = false;
+  updatePartyChatNewButton();
+}, { passive: true });
+
+partyChatViewport.addEventListener("click", event => {
+  if (event.target.closest("button")) return;
+  partyChatInput.blur();
+});
+
+if (window.ResizeObserver) {
+  new ResizeObserver(() => {
+    partyChatEmpty.classList.toggle("compact", partyChatViewport.clientHeight < partyChatCompactHeight);
+  }).observe(partyChatViewport);
+}
 
 partyButton.addEventListener("click", event => {
   event.stopPropagation();

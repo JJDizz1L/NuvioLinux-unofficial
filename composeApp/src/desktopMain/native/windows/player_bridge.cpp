@@ -1210,6 +1210,10 @@ public:
         return flagProperty("eof-reached", false);
     }
 
+    std::string mpvStringProperty(const char *name) {
+        return stringProperty(name, "");
+    }
+
     std::string audioTracksJson() {
         return tracksJsonForType("audio");
     }
@@ -1223,6 +1227,13 @@ public:
         if (!mpv) return;
         int64_t id = trackId;
         mpvApi().setProperty(mpv, "aid", MPV_FORMAT_INT64, &id);
+    }
+
+    void setAudioLanguages(const std::string &languages) {
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setPropertyString(mpv, "alang", languages.c_str());
+        mpvApi().setPropertyString(mpv, "aid", "auto");
     }
 
     void selectSubtitleTrackId(int trackId) {
@@ -1903,11 +1914,6 @@ private:
         if (type == "controlsReady") {
             controlsWebReady.store(true);
             flushPendingControlsJsonIfReady();
-            syncControls();
-            return;
-        }
-        if (type == "selectAudioTrack") {
-            selectAudioTrackId((int)std::llround(value));
             syncControls();
             return;
         }
@@ -2867,6 +2873,12 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_audioTracksJson(JN
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_stringProperty(JNIEnv *env, jobject, jlong handle, jstring name) {
+    auto player = playerFromHandle(handle);
+    return newJavaStringUtf8(env, player ? player->mpvStringProperty(jstringToUtf8(env, name).c_str()) : "");
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_subtitleTracksJson(JNIEnv *env, jobject, jlong handle) {
     auto player = playerFromHandle(handle);
     return newJavaStringUtf8(env, player ? player->subtitleTracksJson() : "[]");
@@ -2876,6 +2888,12 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_selectAudioTrack(JNIEnv *, jobject, jlong handle, jint trackId) {
     auto player = playerFromHandle(handle);
     if (player) player->selectAudioTrackId(trackId);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setAudioLanguages(JNIEnv *env, jobject, jlong handle, jstring languages) {
+    auto player = playerFromHandle(handle);
+    if (player) player->setAudioLanguages(jstringToUtf8(env, languages));
 }
 
 extern "C" JNIEXPORT void JNICALL

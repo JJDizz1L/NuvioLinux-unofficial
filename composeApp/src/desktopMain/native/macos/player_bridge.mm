@@ -151,6 +151,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (NSString *)audioTracksJson;
 - (NSString *)subtitleTracksJson;
 - (void)selectAudioTrackId:(int)trackId;
+- (void)setAudioLanguages:(NSString *)languages;
 - (void)selectSubtitleTrackId:(int)trackId;
 - (void)addSubtitleUrl:(NSString *)url;
 - (void)removeExternalSubtitles;
@@ -2458,6 +2459,12 @@ static void nuvioMpvWakeup(void *ctx) {
     mpv_set_property(_mpv, "aid", MPV_FORMAT_INT64, &id);
 }
 
+- (void)setAudioLanguages:(NSString *)languages {
+    if (!_mpv) return;
+    mpv_set_property_string(_mpv, "alang", languages.UTF8String);
+    mpv_set_property_string(_mpv, "aid", "auto");
+}
+
 - (void)selectSubtitleTrackId:(int)trackId {
     if (!_mpv) return;
     if (trackId < 0) {
@@ -3566,6 +3573,21 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_audioTracksJson(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_stringProperty(
+    JNIEnv *env,
+    jobject /* bridge */,
+    jlong handle,
+    jstring name
+) {
+    if (handle == 0 || name == nullptr) return env->NewStringUTF("");
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    const char *chars = env->GetStringUTFChars(name, nullptr);
+    NSString *value = [player stringProperty:chars fallback:@""];
+    env->ReleaseStringUTFChars(name, chars);
+    return env->NewStringUTF(value.UTF8String);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_subtitleTracksJson(
     JNIEnv *env,
     jobject /* bridge */,
@@ -3588,6 +3610,21 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_selectAudioTrack(
     MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
     runOnMainAsync(^{
         [player selectAudioTrackId:(int)trackId];
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setAudioLanguages(
+    JNIEnv *env,
+    jobject /* bridge */,
+    jlong handle,
+    jstring languages
+) {
+    if (handle == 0) return;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    NSString *value = [NSString stringWithUTF8String:jstringToString(env, languages).c_str()] ?: @"";
+    runOnMainAsync(^{
+        [player setAudioLanguages:value];
     });
 }
 

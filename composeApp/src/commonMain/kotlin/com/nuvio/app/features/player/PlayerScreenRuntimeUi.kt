@@ -31,6 +31,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.features.p2p.P2pStreamingState
 import com.nuvio.app.features.party.PartyRepository
 import com.nuvio.app.features.p2p.formatP2pMegabytes
@@ -252,6 +253,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         else -> ""
     }
     val partyControls = if (isDesktop) rememberPartyControlsState() else PlayerControlPartyState()
+    val playerBadges = if (isDesktop) rememberPlayerBadges() else emptyList()
     val playerControlsState = PlayerControlsState(
         title = title,
         episodeText = episodeText,
@@ -646,6 +648,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
     val isInPip = rememberIsInPictureInPicture()
     val partyState by PartyRepository.state.collectAsStateWithLifecycle()
     val partyActive = partyState.party != null
+    val playerBadges = if (isDesktop) emptyList() else rememberPlayerBadges()
     AnimatedVisibility(
         visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
         enter = fadeIn(),
@@ -667,6 +670,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             showRemainingTime = showRemainingTime,
             onRuntimeClick = { showRemainingTime = !showRemainingTime },
             releaseInfo = metaUiState.meta?.takeIf { it.id == parentMetaId }?.releaseInfo,
+            badges = playerBadges,
             hideDetails = activeSkipInterval != null && !skipIntervalDismissed,
             onNextEpisodeClick = if (nextEpisodeInfo?.hasAired == true && !nextEpisodeAutoPlaySearching && nextEpisodeAutoPlayCountdown == null) {
                 {
@@ -680,10 +684,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             },
             onBack = { requestBack() },
             onPartyClick = if (PartyRepository.available.collectAsStateWithLifecycle().value) {
-                {
-                    showPartyPanel = true
-                    controlsVisible = false
-                }
+                { openPartyPanel() }
             } else {
                 null
             },
@@ -755,7 +756,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 null
             },
             onSwitchEngineClick = if (playerController?.playbackEngine != null) {
-                { switchPlaybackEngine() }
+                { showSwitchEngineConfirm = true }
             } else {
                 null
             },
@@ -1922,4 +1923,19 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         addonSubtitle = selectedAddonSubtitle.takeIf { useCustomSubtitles },
         onDismiss = { showStreamInfo = false },
     )
+    val switchEngineTarget = playerController?.playbackEngine?.switchTarget
+    if (switchEngineTarget != null) {
+        NuvioStatusModal(
+            isVisible = showSwitchEngineConfirm,
+            title = stringResource(Res.string.player_engine_switch_title, switchEngineTarget.label),
+            message = stringResource(Res.string.player_engine_switch_message),
+            confirmText = stringResource(Res.string.action_switch),
+            dismissText = stringResource(Res.string.action_cancel),
+            onConfirm = {
+                showSwitchEngineConfirm = false
+                switchPlaybackEngine()
+            },
+            onDismiss = { showSwitchEngineConfirm = false },
+        )
+    }
 }

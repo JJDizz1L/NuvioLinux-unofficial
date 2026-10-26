@@ -1888,6 +1888,12 @@ JNIEXPORT jstring JNICALL NP(audioTracksJson)(JNIEnv *env, jobject, jlong handle
     return utf8ToJstring(env, buildTracksJson(p->mpv, "audio"));
 }
 
+JNIEXPORT jstring JNICALL NP(stringProperty)(JNIEnv *env, jobject, jlong handle, jstring name) {
+    Player *p = asPlayer(handle);
+    if (!p) return utf8ToJstring(env, "");
+    return utf8ToJstring(env, mpvGetStr(p->mpv, jstringToUtf8(env, name)));
+}
+
 JNIEXPORT jstring JNICALL NP(subtitleTracksJson)(JNIEnv *env, jobject, jlong handle) {
     Player *p = asPlayer(handle);
     if (!p) return utf8ToJstring(env, "[]");
@@ -1900,6 +1906,14 @@ JNIEXPORT void JNICALL NP(selectAudioTrack)(JNIEnv *, jobject, jlong handle, jin
     int64_t id = trackId;
     if (trackId < 0) mpv_set_property_string(p->mpv, "aid", "no");
     else mpv_set_property(p->mpv, "aid", MPV_FORMAT_INT64, &id);
+}
+
+JNIEXPORT void JNICALL NP(setAudioLanguages)(JNIEnv *env, jobject, jlong handle, jstring languages) {
+    Player *p = asPlayer(handle);
+    if (!p) return;
+    std::string value = jstringToUtf8(env, languages);
+    mpv_set_property_string(p->mpv, "alang", value.c_str());
+    mpv_set_property_string(p->mpv, "aid", "auto");
 }
 
 JNIEXPORT void JNICALL NP(selectSubtitleTrack)(JNIEnv *, jobject, jlong handle, jint trackId) {

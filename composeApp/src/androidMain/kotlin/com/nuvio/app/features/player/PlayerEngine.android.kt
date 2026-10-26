@@ -853,6 +853,8 @@ private fun ExoPlayerSurface(
                         audioCodec = CustomDefaultTrackNameProvider.formatNameFromMime(audio?.sampleMimeType),
                         audioChannels = audio?.channelCount?.takeIf { it > 0 },
                         audioSampleRate = audio?.sampleRate?.takeIf { it > 0 },
+                        hdr = video?.hdrFormats().orEmpty(),
+                        bitDepth = video?.colorInfo?.lumaBitdepth?.takeIf { it > 0 },
                     )
                 }
 
@@ -2511,5 +2513,13 @@ internal class SubtitleRequestHeaderDataSource(
 
     override fun close() {
         upstream.close()
+    }
+}
+
+private fun Format.hdrFormats(): List<String> = buildList {
+    if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) add("DV")
+    when (colorInfo?.colorTransfer) {
+        C.COLOR_TRANSFER_ST2084 -> add("HDR10")
+        C.COLOR_TRANSFER_HLG -> add("HLG")
     }
 }

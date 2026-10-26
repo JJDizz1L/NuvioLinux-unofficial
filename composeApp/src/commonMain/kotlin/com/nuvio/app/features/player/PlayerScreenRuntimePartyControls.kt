@@ -1,13 +1,19 @@
 package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.network.ServerConfigurationRepository
+import com.nuvio.app.core.format.formatLocalTime
+import com.nuvio.app.features.party.PartyChat
+import com.nuvio.app.features.party.PartyChatStatus
+import com.nuvio.app.features.party.PartyMember
 import com.nuvio.app.features.party.PartyRepository
+import com.nuvio.app.features.party.partyChatRows
 import com.nuvio.app.features.party.behindMs
 import com.nuvio.app.features.party.displayTitle
 import com.nuvio.app.features.party.formatPartyCode
@@ -21,6 +27,12 @@ import nuvio.composeapp.generated.resources.action_close
 import nuvio.composeapp.generated.resources.action_remove
 import nuvio.composeapp.generated.resources.party_behind
 import nuvio.composeapp.generated.resources.party_behind_title
+import nuvio.composeapp.generated.resources.party_chat_empty_message
+import nuvio.composeapp.generated.resources.party_chat_empty_title
+import nuvio.composeapp.generated.resources.party_chat_new_messages
+import nuvio.composeapp.generated.resources.party_chat_not_sent
+import nuvio.composeapp.generated.resources.party_chat_placeholder
+import nuvio.composeapp.generated.resources.party_chat_send
 import nuvio.composeapp.generated.resources.party_catch_up
 import nuvio.composeapp.generated.resources.party_code_label
 import nuvio.composeapp.generated.resources.party_copy_invite
@@ -52,11 +64,15 @@ import nuvio.composeapp.generated.resources.party_switch
 import nuvio.composeapp.generated.resources.party_switch_confirm
 import nuvio.composeapp.generated.resources.party_switch_message
 import nuvio.composeapp.generated.resources.party_switch_title
+import nuvio.composeapp.generated.resources.party_tab_chat
+import nuvio.composeapp.generated.resources.party_tab_party
 import nuvio.composeapp.generated.resources.party_title
 import nuvio.composeapp.generated.resources.party_unavailable
 import nuvio.composeapp.generated.resources.party_watch_with_party
 import nuvio.composeapp.generated.resources.party_you
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 @Composable
 internal fun PlayerScreenRuntime.rememberPartyControlsState(): PlayerControlPartyState {
@@ -79,6 +95,13 @@ internal fun PlayerScreenRuntime.rememberPartyControlsState(): PlayerControlPart
             }
         }
     }
+    val chatMessages by PartyChat.messages.collectAsStateWithLifecycle()
+    val unread by PartyChat.unread.collectAsStateWithLifecycle()
+    val chatVisible = partyChatVisible && party != null
+    DisposableEffect(chatVisible) {
+        PartyChat.setOpen(chatVisible)
+        onDispose { PartyChat.setOpen(false) }
+    }
     val canStart = PartyRepository.canUse
     val base = PlayerControlPartyState(
         available = available,
@@ -99,6 +122,7 @@ internal fun PlayerScreenRuntime.rememberPartyControlsState(): PlayerControlPart
         message = partyMessage,
         messageToken = partyMessageToken,
         labels = partyControlLabels(),
+        chat = PlayerControlChatState(unread = unread),
     )
     if (party == null) return base
 
@@ -127,6 +151,40 @@ internal fun PlayerScreenRuntime.rememberPartyControlsState(): PlayerControlPart
             removeTitle = stringResource(Res.string.party_remove_title, member.displayName),
         )
     }
+    val chat = if (chatVisible) {
+        PlayerControlChatState(
+            unread = unread,
+            ready = true,
+            messages = partyChatRows(chatMessages).map { row ->
+                val message = row.message
+                val member = party.member(message.memberId)
+                    ?: PartyMember(
+                        id = message.memberId,
+                        displayName = message.name,
+                        avatarUrl = message.avatarUrl,
+                        avatarColor = message.avatarColor,
+                    )
+                PlayerControlChatMessage(
+                    key = message.key,
+                    memberId = message.memberId,
+                    name = member.displayName,
+                    initial = member.displayName.initial(),
+                    imageUrl = member.avatarUrl?.takeIf { it.startsWith(storage) }.orEmpty(),
+                    color = member.avatarColor.orEmpty(),
+                    body = message.body,
+                    time = if (row.showTime) formatLocalTime(message.sentAt) else "",
+                    mine = message.mine,
+                    sent = message.status == PartyChatStatus.Sent,
+                    failed = message.status == PartyChatStatus.Failed,
+                    startsGroup = row.startsGroup,
+                    endsGroup = row.endsGroup,
+                    showTime = row.showTime,
+                )
+            },
+        )
+    } else {
+        PlayerControlChatState(unread = unread)
+    }
     val canSwitch = elsewhere && party.isHost
     return base.copy(
         active = true,
@@ -147,10 +205,25 @@ internal fun PlayerScreenRuntime.rememberPartyControlsState(): PlayerControlPart
         switchMessage = if (canSwitch) stringResource(Res.string.party_switch_message, playerMedia.displayTitle()) else "",
         pillMessage = partyPillMessage(party, playback, notice).orEmpty(),
         pillPinned = partyPillPinned(party, playback, notice),
+        chat = chat,
     )
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 internal fun PlayerScreenRuntime.handlePartyControlsEvent(type: String, value: Double): Boolean {
+    if (type.startsWith(CHAT_SEND_EVENT)) {
+        val text = runCatching {
+            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL)
+                .decode(type.removePrefix(CHAT_SEND_EVENT))
+                .decodeToString()
+        }.getOrNull()
+        if (text != null) PartyChat.send(text)
+        return true
+    }
+    if (type.startsWith(CHAT_RETRY_EVENT)) {
+        PartyChat.retry(type.removePrefix(CHAT_RETRY_EVENT))
+        return true
+    }
     if (type.startsWith(REMOVE_MEMBER_EVENT)) {
         val memberId = type.removePrefix(REMOVE_MEMBER_EVENT)
         val party = PartyRepository.state.value.party
@@ -169,6 +242,7 @@ internal fun PlayerScreenRuntime.handlePartyControlsEvent(type: String, value: D
         "partyCatchUp" -> catchUpWithParty()
         "partyLeave" -> leaveParty()
         "partyEnd" -> endParty()
+        "partyChatVisible" -> partyChatVisible = value >= 0.5
         else -> return false
     }
     return true
@@ -203,8 +277,18 @@ private fun partyControlLabels(): Map<String, String> = mapOf(
     "end" to stringResource(Res.string.party_end),
     "endTitle" to stringResource(Res.string.party_end_title),
     "endMessage" to stringResource(Res.string.party_end_message),
+    "tabParty" to stringResource(Res.string.party_tab_party),
+    "tabChat" to stringResource(Res.string.party_tab_chat),
+    "chatEmptyTitle" to stringResource(Res.string.party_chat_empty_title),
+    "chatEmptyMessage" to stringResource(Res.string.party_chat_empty_message),
+    "chatPlaceholder" to stringResource(Res.string.party_chat_placeholder),
+    "chatSend" to stringResource(Res.string.party_chat_send),
+    "chatNotSent" to stringResource(Res.string.party_chat_not_sent),
+    "chatNewMessages" to stringResource(Res.string.party_chat_new_messages),
 )
 
 private fun String.initial(): String = trim().take(1).uppercase()
 
 private const val REMOVE_MEMBER_EVENT = "partyRemoveMember:"
+private const val CHAT_SEND_EVENT = "partyChatSend:"
+private const val CHAT_RETRY_EVENT = "partyChatRetry:"

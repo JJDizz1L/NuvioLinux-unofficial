@@ -31,6 +31,7 @@ data class PlayerControlPartyState(
     val message: String = "",
     val messageToken: Long = 0L,
     val labels: Map<String, String> = emptyMap(),
+    val chat: PlayerControlChatState = PlayerControlChatState(),
 )
 
 @Serializable
@@ -45,4 +46,29 @@ data class PlayerControlPartyMember(
     val presence: String = "",
     val canRemove: Boolean = false,
     val removeTitle: String = "",
+)
+
+@Serializable
+data class PlayerControlChatState(
+    val unread: Int = 0,
+    val ready: Boolean = false,
+    val messages: List<PlayerControlChatMessage> = emptyList(),
+)
+
+@Serializable
+data class PlayerControlChatMessage(
+    val key: String = "",
+    val memberId: String = "",
+    val name: String = "",
+    val initial: String = "",
+    val imageUrl: String = "",
+    val color: String = "",
+    val body: String = "",
+    val time: String = "",
+    val mine: Boolean = false,
+    val sent: Boolean = true,
+    val failed: Boolean = false,
+    val startsGroup: Boolean = false,
+    val endsGroup: Boolean = false,
+    val showTime: Boolean = false,
 )

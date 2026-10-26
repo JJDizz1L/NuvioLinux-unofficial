@@ -16,6 +16,8 @@ import com.nuvio.app.features.player.ParentalWarning
 import com.nuvio.app.features.player.PlayerControlsAction
 import com.nuvio.app.features.player.PlayerControlsState
 import com.nuvio.app.features.player.PlayerEngineController
+import com.nuvio.app.features.player.PlayerMediaInfo
+import com.nuvio.app.features.player.mpvMediaInfo
 import com.nuvio.app.features.player.PlayerPlaybackSnapshot
 import com.nuvio.app.features.player.PlayerResizeMode
 import com.nuvio.app.features.player.SUBTITLE_DELAY_MAX_MS
@@ -996,6 +998,11 @@ internal class NativePlayerController(
             )
         }
 
+    override suspend fun getMediaInfo(): PlayerMediaInfo {
+        val current = handle.takeIf { it != 0L } ?: return PlayerMediaInfo()
+        return mpvMediaInfo { name -> NativePlayerBridge.stringProperty(current, name).takeIf { it.isNotBlank() } }
+    }
+
     override fun getSubtitleTracks(): List<SubtitleTrack> =
         decodeTracks { NativePlayerBridge.subtitleTracksJson(it) }.map { track ->
             SubtitleTrack(
@@ -1013,6 +1020,7 @@ internal class NativePlayerController(
         }
 
     override fun applyAudioLanguagePreferences(languages: List<String>) {
+        handle.takeIf { it != 0L }?.let { NativePlayerBridge.setAudioLanguages(it, languages.joinToString(",")) }
         val trackIndex = findPreferredAudioTrackIndex(getAudioTracks(), languages)
         if (trackIndex >= 0) selectAudioTrack(trackIndex)
     }
@@ -1626,6 +1634,15 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("notificationMessage", notificationMessage)
         append(',')
         appendJsonField("notificationToken", notificationToken)
+        append(',')
+        appendJsonArrayField("badges", badges) {
+            append("{\"name\":").append(it.name.toJsonString())
+            append(",\"imageUrl\":").append(it.imageURL.toJsonString())
+            append(",\"tagColor\":").append(it.tagColor.toJsonString())
+            append(",\"tagStyle\":").append(it.tagStyle.toJsonString())
+            append(",\"borderColor\":").append(it.borderColor.toJsonString())
+            append('}')
+        }
         append(",\"party\":")
         append(partyJson.encodeToString(PlayerControlPartyState.serializer(), party.withWebviewImages(onImageReady)))
         append('}')

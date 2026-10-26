@@ -247,6 +247,23 @@ internal fun PlayerScreenRuntime.skipInterval(interval: SkipInterval) {
     skipIntervalDismissed = true
 }
 
+internal fun PlayerScreenRuntime.setPlaybackPlaying(playing: Boolean) {
+    if (playing == shouldPlay) return
+    if (isPartyControlLocked) {
+        toggleOwnPlayback()
+        return
+    }
+    val restart = playing && playbackSnapshot.isEnded
+    if (restart) playerController?.seekTo(0L)
+    shouldPlay = playing
+    if (playing) playerController?.play() else playerController?.pause()
+    val positionMs = pendingSeekTarget
+        ?.takeIf { (_, mark) -> mark.elapsedNow() < PendingSeekWindow }
+        ?.first
+        ?: currentPlaybackPositionMs()
+    publishPartyPlayback(positionMs = if (restart) 0L else positionMs)
+}
+
 internal fun PlayerScreenRuntime.seekBy(offsetMs: Long, revealControls: Boolean = true) {
     val fromMs = pendingSeekTarget
         ?.takeIf { (_, mark) -> mark.elapsedNow() < PendingSeekWindow }

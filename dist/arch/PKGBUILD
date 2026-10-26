@@ -23,7 +23,7 @@ license=('GPL3')
 # NOTE: no 'libstdc++' — gcc-libs provides the C++ runtime on vanilla Arch;
 # a package by that name only exists in CachyOS repos (pkgrel 2 fix).
 depends=('mpv' 'webkit2gtk-4.1' 'gtk3' 'glibc' 'gcc-libs' 'libx11' 'libxcomposite' 'libxext' 'libxrender' 'libxi' 'libxtst')
-makedepends=('jdk21-temurin' 'mpv' 'webkit2gtk-4.1' 'gtk3' 'libxcomposite' 'libxext' 'gcc')
+makedepends=('jdk21-temurin' 'mpv' 'webkit2gtk-4.1' 'gtk3' 'libxcomposite' 'libxext' 'gcc' 'cmake')
 install=nuvio-linux.install
 provides=("${pkgname}")
 conflicts=("${pkgname}")

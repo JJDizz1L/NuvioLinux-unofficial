@@ -7,11 +7,11 @@
 # The public key lives in nuvio-linux-gpg-key.asc next to this file
 # (pseudonymous packaging key — see AGENTS.md).
 
-_upstream_tag="0.1.32-alpha"
+_upstream_tag="0.1.33-alpha"
 
 pkgname=nuvio-linux
 # Upstream VERSION_NAME with the hyphen stripped (makepkg forbids '-').
-pkgver=0.1.32alpha
+pkgver=0.1.33alpha
 pkgrel=1
 pkgdesc="Nuvio desktop media player — upstream source packaged for Arch Linux"
 arch=('x86_64')
@@ -29,7 +29,7 @@ provides=("${pkgname}")
 conflicts=("${pkgname}")
 options=('!strip')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/NuvioMedia/NuvioDesktop/archive/refs/tags/${_upstream_tag}.tar.gz")
-sha256sums=('60e22536bdb46e3704ee01ca20dc332c52b8f668d5448d1914c6d14c53654aef')
+sha256sums=('9a9e89fb5f7026affa7e4162555c583999133a24abd586bb2a6ffe7174ae3f19')
 
 # Baseline x86-64 JDK (Temurin 21 LTS, AUR) — set UNCONDITIONALLY: a stale
 # or -march=v3|v4 JAVA_HOME from the environment would otherwise silently

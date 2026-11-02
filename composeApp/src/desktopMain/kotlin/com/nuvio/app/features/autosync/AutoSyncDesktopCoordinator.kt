@@ -26,6 +26,7 @@ internal class DesktopAutoSyncCoordinator(
     private var operationToken = 0L
     private var candidates: List<AutoSyncSubtitleCandidate> = emptyList()
     private var appliedListener: ((subtitleUrl: String, delayMs: Int) -> Unit)? = null
+    private var failureListener: ((AutoSyncFailure) -> Unit)? = null
 
     fun wrap(controller: PlayerEngineController): PlayerEngineController =
         AutoSyncDesktopEngineController(controller, this)
@@ -38,6 +39,10 @@ internal class DesktopAutoSyncCoordinator(
         appliedListener = listener
     }
 
+    fun setFailureListener(listener: ((AutoSyncFailure) -> Unit)?) {
+        failureListener = listener
+    }
+
     fun cancel() {
         operationToken++
         job?.cancel()
@@ -47,6 +52,7 @@ internal class DesktopAutoSyncCoordinator(
     fun dispose() {
         cancel()
         appliedListener = null
+        failureListener = null
     }
 
     fun start(
@@ -90,6 +96,13 @@ internal class DesktopAutoSyncCoordinator(
                 if (token != operationToken) return@launch
                 if (resolved == null) {
                     log.i { "no usable reference: $outcome" }
+                    failureListener?.invoke(
+                        when (outcome) {
+                            AutoSyncAnalysisOutcome.NO_SUBTITLE_TRACKS,
+                            AutoSyncAnalysisOutcome.NO_USABLE_REFERENCE -> AutoSyncFailure.NO_REFERENCE
+                            else -> AutoSyncFailure.FAILED
+                        },
+                    )
                     return@launch
                 }
 
@@ -103,6 +116,7 @@ internal class DesktopAutoSyncCoordinator(
                     if (token != operationToken) return@launch
                     if (path == null) {
                         log.w { "subtitle format cannot be retimed" }
+                        failureListener?.invoke(AutoSyncFailure.FAILED)
                         return@launch
                     }
                     base.setSubtitleUri(path)
@@ -114,6 +128,7 @@ internal class DesktopAutoSyncCoordinator(
                 throw cancel
             } catch (error: Exception) {
                 log.w(error) { "autosync failed" }
+                if (token == operationToken) failureListener?.invoke(AutoSyncFailure.FAILED)
             }
         }
     }
@@ -160,6 +175,9 @@ private class AutoSyncDesktopEngineController(
     override fun setAutoSyncAppliedListener(
         listener: ((subtitleUrl: String, delayMs: Int) -> Unit)?,
     ) = coordinator.setAppliedListener(listener)
+
+    override fun setAutoSyncFailureListener(listener: ((AutoSyncFailure) -> Unit)?) =
+        coordinator.setFailureListener(listener)
 
     override fun setSubtitleUri(url: String) {
         coordinator.cancel()

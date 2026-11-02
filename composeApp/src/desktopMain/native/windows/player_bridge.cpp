@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <clocale>
 #include <cmath>
 #include <condition_variable>
 #include <cctype>
@@ -1274,6 +1275,20 @@ public:
         mpvApi().setProperty(mpv, "sub-delay", MPV_FORMAT_DOUBLE, &delaySeconds);
     }
 
+    void applySubtitleAppearance(
+        const std::string &font,
+        const std::string &fontsDir,
+        const std::string &shadowColor,
+        double shadowOffset
+    ) {
+        if (!fontsDir.empty()) setStringProperty("sub-fonts-dir", fontsDir);
+        setStringProperty("sub-font", font);
+        setStringProperty("sub-shadow-color", shadowColor);
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setProperty(mpv, "sub-shadow-offset", MPV_FORMAT_DOUBLE, &shadowOffset);
+    }
+
     void applySubtitleStyle(
         const std::string &textColor,
         const std::string &backgroundColor,
@@ -1716,6 +1731,12 @@ private:
         bool fastProfile = !nvidiaRtxSuperResolutionEnabled && unifiedMemoryGpu();
         {
             std::lock_guard<std::mutex> lock(mpvMutex);
+            // libmpv requires LC_NUMERIC=C: non-"C" locales that use comma
+            // decimals make mpv_create fail. The JVM formats numbers through
+            // java.util.Locale, so this C-level change does not affect Java.
+            if (setlocale(LC_NUMERIC, "C") == nullptr) {
+                throw std::runtime_error("setlocale(LC_NUMERIC, \"C\") failed.");
+            }
             mpv = api.create();
             if (!mpv) {
                 throw std::runtime_error("mpv_create failed.");
@@ -3001,5 +3022,25 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleStyle
         subPos,
         useLibass == JNI_TRUE,
         stripSdh == JNI_TRUE
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppearance(
+    JNIEnv *env,
+    jobject,
+    jlong handle,
+    jstring font,
+    jstring fontsDir,
+    jstring shadowColor,
+    jfloat shadowOffset
+) {
+    auto player = playerFromHandle(handle);
+    if (!player) return;
+    player->applySubtitleAppearance(
+        jstringToUtf8(env, font),
+        jstringToUtf8(env, fontsDir),
+        jstringToUtf8(env, shadowColor),
+        shadowOffset
     );
 }

@@ -1267,6 +1267,12 @@ public:
         }
     }
 
+    void setSubtitleVisible(bool visible) {
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setPropertyString(mpv, "sub-visibility", visible ? "yes" : "no");
+    }
+
     void setSubtitleDelayMs(int delayMs) {
         std::lock_guard<std::mutex> lock(mpvMutex);
         if (!mpv) return;
@@ -1302,7 +1308,7 @@ public:
     ) {
         double size = std::max(18.0, std::min(96.0, fontSize));
         int64_t position = std::max(0, std::min(150, subPos));
-        double scale = useLibass ? size / 54.0 : 1.0;
+        double scale = 1.0;
         double outline = std::max(0.0, std::min(8.0, outlineSize));
         std::string resolvedTextColor = textColor.empty() ? "#FFFFFFFF" : textColor;
         std::string resolvedBackgroundColor = backgroundColor.empty() ? "#00000000" : backgroundColor;
@@ -1321,18 +1327,12 @@ public:
         bool stripSdhChanged = !hasAppliedSubtitleStyle || appliedSubtitleStripSdh != stripSdh;
 
         if (modeChanged) {
-            setStringProperty("sub-ass-override", useLibass ? "scale" : "force");
+            setStringProperty("sub-ass-override", "scale");
         }
-        if (modeChanged || (!useLibass && boldChanged)) {
+        if (modeChanged) {
             std::lock_guard<std::mutex> lock(mpvMutex);
             if (!mpv) return;
-            const char *styleOverridesCommand[] = {
-                "change-list",
-                "sub-ass-style-overrides",
-                useLibass ? "clr" : "set",
-                useLibass ? "" : (bold ? "Bold=1" : "Bold=0"),
-                nullptr,
-            };
+            const char *styleOverridesCommand[] = {"change-list", "sub-ass-style-overrides", "clr", "", nullptr};
             mpvApi().command(mpv, styleOverridesCommand);
         }
         if (modeChanged || sizeChanged || positionChanged) {
@@ -1347,7 +1347,7 @@ public:
             }
         }
 
-        if (!useLibass) {
+        {
             if (modeChanged || textColorChanged) {
                 setStringProperty("sub-color", resolvedTextColor);
             }
@@ -1355,7 +1355,7 @@ public:
                 setStringProperty("sub-back-color", resolvedBackgroundColor);
                 setStringProperty(
                     "sub-border-style",
-                    resolvedBackgroundColor.rfind("#00", 0) == 0 ? "outline-and-shadow" : "opaque-box"
+                    resolvedBackgroundColor.rfind("#00", 0) == 0 ? "outline-and-shadow" : "background-box"
                 );
             }
             if (modeChanged || outlineColorChanged) {
@@ -2987,6 +2987,12 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setWindowBorderles
         width,
         height
     );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleVisible(JNIEnv *, jobject, jlong handle, jboolean visible) {
+    auto player = playerFromHandle(handle);
+    if (player) player->setSubtitleVisible(visible == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL

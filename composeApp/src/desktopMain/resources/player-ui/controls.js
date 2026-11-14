@@ -872,8 +872,12 @@ const renderPlayerBadges = () => {
   badges.forEach((badge) => {
     const chip = document.createElement("span");
     chip.className = "player-badge";
-    if (String(badge.tagStyle || "").toLowerCase() === "filled" && badge.tagColor) chip.style.background = badge.tagColor;
-    if (badge.borderColor) chip.style.borderColor = badge.borderColor;
+    if (String(badge.tagStyle || "").toLowerCase() === "filled") {
+      const bg = formatCssColor(badge.tagColor);
+      if (bg) chip.style.background = bg;
+    }
+    const borderColor = formatCssColor(badge.borderColor);
+    if (borderColor) chip.style.borderColor = borderColor;
     const image = document.createElement("img");
     image.alt = badge.name || "";
     image.draggable = false;
@@ -2391,7 +2395,7 @@ const renderChapterMarks = () => {
     }
   }
   const index = currentChapterIndex(chapters);
-  setText(chapterTitle, index >= 0 ? chapters[index].title : "");
+  setText(chapterTitle, index >= 0 && state.chapterTitleEnabled !== false ? chapters[index].title : "");
 };
 
 const renderActiveModal = (modalOpened = false) => {
@@ -3691,24 +3695,11 @@ const isControlsSurfaceEvent = event => {
     return true;
   }
 
-  const titleEl = document.getElementById("title");
   const metaRow = document.querySelector(".meta-row");
-  if (titleEl && metaRow) {
-    const titleRect = titleEl.getBoundingClientRect();
-    const metaRect = metaRow.getBoundingClientRect();
-    const textTop = Math.min(titleRect.top, metaRect.top);
-    const textBottom = Math.max(titleRect.bottom, metaRect.bottom);
-    const textRight = titleRect.left + Math.max(titleEl.scrollWidth, metaRow.scrollWidth) + 16;
+  const mediaInfo = [title, episode, metaRow, playerBadges, chapterTitle];
 
-    if (
-        event.clientX >= titleRect.left &&
-        event.clientX <= textRight &&
-        event.clientY >= textTop &&
-        event.clientY <= textBottom
-    ) {
-      return true;
-    }
-  }
+  const infoClick = mediaInfo.some(info => info.checkVisibility() && info.contains(event.target));
+  if (infoClick) return true;
 
   const header = document.querySelector(".header");
   if (header && event.clientY <= header.getBoundingClientRect().bottom + 10) {

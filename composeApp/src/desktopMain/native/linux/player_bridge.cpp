@@ -50,6 +50,7 @@ namespace {
 
 JavaVM *gVm = nullptr;
 constexpr double kMaxVolumePercent = 200.0;
+constexpr uint64_t kOverlayReplyTag = 0x6f766c79;  // 'ovly': overlay-add reply_userdata (high 32 bits)
 constexpr int kDirtyReportedSnapSkipTicks = 90;
 
 struct Player {
@@ -83,6 +84,15 @@ struct Player {
     cairo_surface_t *snapSurf = nullptr;      // buffer mpv's overlay points at
     cairo_surface_t *snapSurfPrev = nullptr;  // kept one push longer: mpv may
                                               // still sample it mid-frame
+    // overlay-add is issued async: a synchronous mpv_command blocks the GTK thread
+    // ~3.5ms per frame waiting on the busy playback core. mpv copies the pixels
+    // when the command EXECUTES, so a surface must not be freed while an add that
+    // points at it is still queued. Adds carry a sequence number, the event loop
+    // records completions, and overlayBarrier() (a synchronous no-op; mpv runs
+    // commands in order) drains the queue before any surface is freed.
+    std::atomic<uint64_t> overlaySeqIssued{0};
+    std::atomic<uint64_t> overlaySeqDone{0};
+    int64_t overlayAsyncAt = 0;
     bool snapInFlight = false;
     int snapWaitTicks = 0;  // watchdog: ticks spent waiting on the in-flight snapshot
     // Snapshot requests are generation-stamped: a watchdog reset (or teardown)
@@ -532,7 +542,26 @@ void onOverlayDestroyed(GtkWidget *, gpointer data) {
 
 // Free the snapshot buffers (safe to call with none allocated). Only after
 // overlay-remove or teardown — mpv's overlay points into snapSurf's data.
+bool overlayBusy(Player *player) {
+    return player->overlaySeqIssued.load() > player->overlaySeqDone.load();
+}
+
+void markOverlayDone(Player *player, uint64_t seq) {
+    uint64_t cur = player->overlaySeqDone.load();
+    while (cur < seq && !player->overlaySeqDone.compare_exchange_weak(cur, seq)) {}
+}
+
+// Block until every queued overlay-add has executed (and copied its pixels).
+void overlayBarrier(Player *player) {
+    if (!player->mpv || !overlayBusy(player)) return;
+    uint64_t issued = player->overlaySeqIssued.load();
+    const char *noop[] = {"ignore", nullptr};
+    mpv_command(player->mpv, noop);
+    markOverlayDone(player, issued);
+}
+
 void releaseSnapshots(Player *player) {
+    overlayBarrier(player);
     if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
     if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
     player->snapSurf = player->snapSurfPrev = nullptr;
@@ -620,6 +649,15 @@ void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
     }
     player->snapStill = 0;
     player->snapSkip = 0;
+    if (overlayBusy(player)) {
+        if (g_get_monotonic_time() - player->overlayAsyncAt < 500000) {
+            // The previous add is still queued in mpv: drop this frame. The next
+            // capture differs from snapSurf, so it is pushed a tick later.
+            cairo_surface_destroy(surf);
+            return;
+        }
+        overlayBarrier(player);  // reply overdue: drain the queue synchronously
+    }
     char addr[32], sw[16], sh[16], sstride[16];
     snprintf(addr, sizeof addr, "&%zu",
              (size_t)(uintptr_t)cairo_image_surface_get_data(surf));
@@ -628,7 +666,12 @@ void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
     snprintf(sstride, sizeof sstride, "%d", cairo_image_surface_get_stride(surf));
     const char *cmd[] = {"overlay-add", "0", "0", "0", addr, "0",
                          "bgra", sw, sh, sstride, nullptr};
-    mpv_command(player->mpv, cmd);
+    // No add is queued (checked above), so every earlier add has copied its
+    // pixels and snapSurfPrev can be freed below.
+    uint64_t seq = player->overlaySeqIssued.fetch_add(1) + 1;
+    player->overlayAsyncAt = g_get_monotonic_time();
+    if (mpv_command_async(player->mpv, (kOverlayReplyTag << 32) | (seq & 0xffffffffu), cmd) < 0)
+        markOverlayDone(player, seq);
     player->overlayPushed = true;
     if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
     player->snapSurfPrev = player->snapSurf;
@@ -640,34 +683,6 @@ void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
 // single window (XWayland won't alpha-blend sibling windows; mpv does the compose
 // that Core Animation / DWM do on macOS / Windows). Only runs while the chrome is
 // visible (plus a short fade-out grace) so normal watching pays nothing.
-bool drawOverlaySurface(Player *player) {
-    if (!player->webview || !player->gtkWindow || !player->overlayXid) return false;
-    GtkWidget *view = GTK_WIDGET(player->webview);
-    GdkWindow *ovGw = gtk_widget_get_window(player->gtkWindow);
-    if (!ovGw || !gtk_widget_get_realized(view)) return false;
-    XWindowAttributes wa;
-    if (!XGetWindowAttributes(GDK_WINDOW_XDISPLAY(ovGw), player->overlayXid, &wa) ||
-        wa.width <= 0 || wa.height <= 0) {
-        return false;
-    }
-    int scale = gdk_window_get_scale_factor(ovGw);
-    if (scale < 1) scale = 1;
-    GtkAllocation alloc;
-    gtk_widget_get_allocation(view, &alloc);
-    if (alloc.width * scale != wa.width || alloc.height * scale != wa.height) return true;
-    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, wa.width, wa.height);
-    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-        cairo_surface_destroy(surf);
-        return false;
-    }
-    cairo_surface_set_device_scale(surf, scale, scale);
-    cairo_t *cr = cairo_create(surf);
-    gtk_widget_draw(view, cr);
-    cairo_destroy(cr);
-    presentOverlaySurface(player, surf);
-    return true;
-}
-
 void compositeOverlay(Player *player) {
     if (!player->overlayXid || !player->mpv || !player->gtkWindow) return;
     GdkWindow *gw = gtk_widget_get_window(player->gtkWindow);
@@ -756,7 +771,7 @@ void compositeOverlay(Player *player) {
             player->snapCooldownTicks--;
         } else if (player->snapSkip > 0) {
             player->snapSkip--;
-        } else if (!drawOverlaySurface(player)) {
+        } else {
             player->snapInFlight = true;
             player->snapWaitTicks = 0;
             if (!player->snapCancel) player->snapCancel = g_cancellable_new();
@@ -1562,6 +1577,15 @@ void runEventLoop(Player *player) {
         mpv_event *event = mpv_wait_event(player->mpv, 0.05);
         if (!event || event->event_id == MPV_EVENT_NONE) continue;
         switch (event->event_id) {
+            case MPV_EVENT_COMMAND_REPLY:
+                if ((event->reply_userdata >> 32) == kOverlayReplyTag) {
+                    // Rebuild the full sequence number from its low 32 bits.
+                    uint64_t issued = player->overlaySeqIssued.load();
+                    uint64_t seq = (issued & ~0xffffffffull) | (event->reply_userdata & 0xffffffffu);
+                    if (seq > issued) seq -= 0x100000000ull;
+                    markOverlayDone(player, seq);
+                }
+                break;
             case MPV_EVENT_LOG_MESSAGE: {
                 auto *msg = static_cast<mpv_event_log_message *>(event->data);
                 if (msg) NUVIO_LOG("mpv[%s] %s: %s", msg->level, msg->prefix, msg->text);
@@ -1613,6 +1637,15 @@ extern "C" {
 // types once and canonically; the bridge thread's gtk_init then no-ops.
 // Approach from skoruppa's linux-webkitgtk branch (initGtkEarly).
 JNIEXPORT jboolean JNICALL NP(initGtkEarly)(JNIEnv *, jobject) {
+    const char *waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    const char *sessionType = std::getenv("XDG_SESSION_TYPE");
+    if ((waylandDisplay && *waylandDisplay) ||
+        (sessionType && std::strcmp(sessionType, "wayland") == 0)) {
+        // Rootless XWayland leaves X11 windows un-reparented. AWT needs to know
+        // before it creates the first window, or its canvas can keep stale bounds.
+        setenv("_JAVA_AWT_WM_NONREPARENTING", "1", 0);
+    }
+
     // Same backend pin as gtkThreadMain: the controls overlay is driven with
     // X11/XComposite, so GTK must not come up on the Wayland backend here.
     gdk_set_allowed_backends("x11");
@@ -1629,7 +1662,7 @@ JNIEXPORT jlong JNICALL NP(create)(
     JNIEnv *env, jobject /*thiz*/, jlong hostViewPtr, jstring sourceUrl,
     jobjectArray headerLines, jboolean playWhenReady, jlong initialPositionMs,
     jstring controlsPageUrl, jint decoderPriority,
-    jboolean /*nvidiaRtxSuperResolutionEnabled*/, jobject eventSink) {
+    jboolean /*nvidiaRtxSuperResolutionEnabled*/, jboolean /*nvidiaRtxHdrEnabled*/, jobject eventSink) {
 
     // libmpv requires LC_NUMERIC=C (e.g. non-"C" locales with comma
     // decimals make mpv_create fail); the JVM uses java.util.Locale, so
@@ -1859,11 +1892,13 @@ JNIEXPORT void JNICALL NP(seekTo)(JNIEnv *, jobject, jlong handle, jlong positio
     p->ended.store(false);
 }
 
+// Exact: mpv keeps relative seeks on keyframes by default, which can overshoot by
+// up to one GOP (often ~10 s).
 JNIEXPORT void JNICALL NP(seekBy)(JNIEnv *, jobject, jlong handle, jlong offsetMs) {
     Player *p = asPlayer(handle);
     if (!p) return;
     std::string delta = std::to_string(offsetMs / 1000.0);
-    const char *cmd[] = {"seek", delta.c_str(), "relative", nullptr};
+    const char *cmd[] = {"seek", delta.c_str(), "relative+exact", nullptr};
     mpv_command(p->mpv, cmd);
     p->ended.store(false);
 }

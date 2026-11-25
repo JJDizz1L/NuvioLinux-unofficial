@@ -230,6 +230,34 @@ void gtkSync(std::function<void()> fn) {
     s.cv.wait(lock, [&] { return s.done; });
 }
 
+// ---- X error handler -----------------------------------------------------
+// libmpv's X11 VO resets the process-wide X error handler to NULL (Xlib's
+// default, which exits on any X error) when it shuts down. Put the app's
+// handler back after each mpv instance is destroyed. Both steps run on the
+// GTK thread so a GDK error trap can't capture or undo the change.
+
+XErrorHandler gAppXErrorHandler = nullptr;
+std::once_flag gAppXErrorHandlerOnce;
+
+int ignoreXError(Display *, XErrorEvent *) { return 0; }
+
+void rememberAppXErrorHandler() {
+    std::call_once(gAppXErrorHandlerOnce, [] {
+        ensureGtk();
+        gtkSync([] {
+            // Xlib has no getter: swap in a no-op handler to read the current one.
+            XErrorHandler current = XSetErrorHandler(ignoreXError);
+            XSetErrorHandler(current);
+            gAppXErrorHandler = current;
+        });
+    });
+}
+
+void restoreAppXErrorHandler() {
+    if (!gAppXErrorHandler) return;
+    gtkSync([] { XSetErrorHandler(gAppXErrorHandler); });
+}
+
 // ---- small helpers -------------------------------------------------------
 
 std::string jstringToUtf8(JNIEnv *env, jstring value) {
@@ -418,6 +446,20 @@ void setOverlayCursorHidden(Player *player, bool hidden) {
     NUVIO_LOG("overlay cursor %s", hidden ? "hidden" : "shown");
 }
 
+// Top-level ancestor of w (the root's direct child containing it), or 0 if w
+// is gone. Caller must hold an X error trap: w may belong to another client.
+Window x11ToplevelOf(Display *dpy, Window w) {
+    while (w) {
+        Window root = 0, parent = 0, *kids = nullptr;
+        unsigned int nkids = 0;
+        if (!XQueryTree(dpy, w, &root, &parent, &kids, &nkids)) return 0;
+        if (kids) XFree(kids);
+        if (parent == root || parent == 0) return w;
+        w = parent;
+    }
+    return 0;
+}
+
 // Give the overlay window real X input focus so the page's keydown handlers
 // run — the same position WKWebView (first responder) and WebView2 (SetFocus/
 // MoveFocus) hold on macOS/Windows. The overlay is composite-redirected but
@@ -428,20 +470,38 @@ void focusOverlay(Player *player) {
     GdkWindow *gw = gtk_widget_get_window(player->gtkWindow);
     if (!gw) return;
     Display *dpy = GDK_WINDOW_XDISPLAY(gw);
-    // Remember the previous focus owner (normally the AWT toplevel) so
-    // teardown can hand the keyboard back. Only on the first grab: re-grabs
-    // (fullscreen toggles, window refocus) must not save our own overlay.
-    if (!player->savedFocusXid) {
-        Window cur = 0;
-        int revert = 0;
-        XGetInputFocus(dpy, &cur, &revert);
-        if (cur != player->overlayXid && cur != None && cur != PointerRoot) {
-            player->savedFocusXid = cur;
+    GdkDisplay *gdpy = gdk_window_get_display(gw);
+    // Only move the keyboard within Nuvio, never take it from another app.
+    // XSetInputFocus bypasses the window manager, so on XWayland the
+    // compositor keeps showing the other app (e.g. a game on another monitor)
+    // as active while its keypresses land here (#729). This runs on every
+    // overlay creation, i.e. each new playback and auto-next episode, so only
+    // grab when X focus is already inside the Nuvio toplevel hosting the
+    // player. None/PointerRoot (e.g. a Wayland-native app is focused) count as
+    // "not ours". If skipped, the window focus listener re-grants focus once
+    // the user activates Nuvio.
+    Window cur = 0;
+    int revert = 0;
+    XGetInputFocus(dpy, &cur, &revert);
+    if (cur != player->overlayXid) {
+        bool ours = false;
+        if (cur != None && cur != PointerRoot) {
+            gdk_x11_display_error_trap_push(gdpy);
+            Window focusTop = x11ToplevelOf(dpy, cur);
+            ours = focusTop && focusTop == x11ToplevelOf(dpy, player->hostXid);
+            gdk_x11_display_error_trap_pop_ignored(gdpy);
         }
+        if (!ours) {
+            NUVIO_LOG("input focus 0x%lx is outside Nuvio; not grabbing", cur);
+            return;
+        }
+        // Remember the previous focus owner (normally the AWT toplevel) so
+        // teardown can hand the keyboard back. Only on the first grab:
+        // re-grabs (fullscreen toggles, window refocus) keep the original.
+        if (!player->savedFocusXid) player->savedFocusXid = cur;
     }
     // Route GTK-side key delivery to the webkit widget once the X events arrive.
     if (player->webview) gtk_widget_grab_focus(GTK_WIDGET(player->webview));
-    GdkDisplay *gdpy = gdk_window_get_display(gw);
     gdk_x11_display_error_trap_push(gdpy);
     XSetInputFocus(dpy, player->overlayXid, RevertToParent, CurrentTime);
     XFlush(dpy);
@@ -1330,6 +1390,8 @@ gboolean createWebviewOnGtk(gpointer data) {
     // Grab the keyboard for the page from the start (macOS grabs first-responder
     // at creation, Windows MoveFocus()es on controller setup) — the page's own
     // keydown handler is the only keyboard path, there is no Kotlin fallback.
+    // No-op if another app has focus (e.g. an auto-next while the user is in
+    // a game); see focusOverlay.
     focusOverlay(player);
 
     // Adoption consumed the warm view — spawn the next one in the background
@@ -1669,6 +1731,7 @@ JNIEXPORT jlong JNICALL NP(create)(
     // this C-level change does not affect Java number formatting.
     setlocale(LC_NUMERIC, "C");
 
+    rememberAppXErrorHandler();
     auto *player = new Player();
     player->mpv = mpv_create();
     if (!player->mpv) {
@@ -1813,6 +1876,7 @@ JNIEXPORT jlong JNICALL NP(create)(
         }
         mpv_destroy(player->mpv);
         player->mpv = nullptr;
+        restoreAppXErrorHandler();
     }
     if (!player->mpv || initResult < 0) {
         delete player;
@@ -1875,6 +1939,7 @@ JNIEXPORT void JNICALL NP(dispose)(JNIEnv *env, jobject, jlong handle) {
     if (player->eventThread.joinable()) player->eventThread.join();
     if (player->eventSink) env->DeleteGlobalRef(player->eventSink);
     if (player->mpv) mpv_terminate_destroy(player->mpv);
+    restoreAppXErrorHandler();
     delete player;
 }
 
@@ -2107,7 +2172,7 @@ JNIEXPORT void JNICALL NP(applySubtitleStyle)(
 
 JNIEXPORT void JNICALL NP(setSubtitleAppearance)(
     JNIEnv *env, jobject, jlong handle, jstring font, jstring fontsDir, jstring shadowColor,
-    jfloat shadowOffset) {
+    jfloat shadowOffset, jfloat shadowBlur) {
     Player *p = asPlayer(handle);
     if (!p) return;
     std::string dir = jstringToUtf8(env, fontsDir);
@@ -2116,6 +2181,8 @@ JNIEXPORT void JNICALL NP(setSubtitleAppearance)(
     mpv_set_property_string(p->mpv, "sub-shadow-color", jstringToUtf8(env, shadowColor).c_str());
     std::string offset = std::to_string(shadowOffset);
     mpv_set_property_string(p->mpv, "sub-shadow-offset", offset.c_str());
+    std::string blur = std::to_string(shadowBlur);
+    mpv_set_property_string(p->mpv, "sub-blur", blur.c_str());
 }
 
 // ---- Phase 2 stubs: webview controls / window chrome / focus ------------
@@ -2132,6 +2199,7 @@ JNIEXPORT void JNICALL NP(updateControls)(JNIEnv *env, jobject, jlong handle, js
 }
 // Re-grant the overlay X input focus (initial grab happens at webview
 // creation; Kotlin calls this on fullscreen changes and window refocus).
+// focusOverlay ignores it unless X focus is already inside Nuvio.
 JNIEXPORT void JNICALL NP(requestFocus)(JNIEnv *, jobject, jlong handle) {
     auto *player = reinterpret_cast<Player *>(handle);
     if (!player) return;

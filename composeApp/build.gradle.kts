@@ -1288,6 +1288,21 @@ compose.desktop {
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
+            // The player bridge, JNA and Skiko load native libraries with System.load. JDK 25
+            // warns about it at startup and later JDKs will block it unless this is set.
+            "--enable-native-access=ALL-UNNAMED",
+            // Without these the JVM sizes the heap from the machine's RAM (about
+            // 1 GB initial and a quarter of RAM as maximum) and G1 keeps hundreds
+            // of MB committed for a live set of roughly 100 MB.
+            "-Xms128m",
+            "-Xmx2g",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30",
+            // Lets an idle app hand unused heap back to the system.
+            "-XX:G1PeriodicGCInterval=15000",
+            // Skiko's FrameWatcher calls System.gc() every 30 s while frames are
+            // being rendered; as a full collection that is a 40-50 ms pause.
+            "-XX:+ExplicitGCInvokesConcurrent",
             smokePlayerUrl?.takeIf { it.isNotBlank() }?.let { "-Dnuvio.desktop.smokePlayerUrl=$it" },
         )
 
@@ -1354,6 +1369,7 @@ compose.desktop {
             linux {
                 iconFile.set(project.file("src/desktopMain/resources/icons/nuvio-app-icon-transparent.png"))
                 debMaintainer = "contact@nuvio.tv"
+                appRelease = "1"
                 shortcut = true
                 menuGroup = "Nuvio"
                 appCategory = "AudioVideo"
